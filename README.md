@@ -1,38 +1,37 @@
 ## Project Title
 
-GBDA302 Side Quest 5 Sad Lonely Stressed Blob
+GBDA302 A1
 
 ---
 
 ## Authors
 
-Alejandra Antequera: 21073624
+Alejandra Antequera - aanteque - 21073624
 
 ---
 
 ## Description
 
-This is a game about being a small little stressed, sad, and lonely blob.
+Fuzzy Bet is a memory game where you put money behind your choices.
 
 ---
 
 ## INSTRUCTIONS
 
-- WASD or arrow keys to move
-- R to reset position
+- Selecting betting amount
+- Then press reveal
+- Select correct number
+- Repeats
 
 ---
 
 ## Iteration Notes
 
 Post-Playtest: Three changes made based on playtesting
-- Changed Colours
-- Changed Blob Appearance
-- Added an stress ball thingies
+- N/A
 
 Post-Showcase: Two planned improvements
-- Perhaps add damage
-- Perchance add shaky screen near enemy.
+- N/A
 
 ---
 
@@ -40,17 +39,16 @@ Post-Showcase: Two planned improvements
 
 Learning Goals:
 
-- Evoke emotions through visuals
+- Use AI to create game based upon dyscalculia
 
 ---
 
 ## Assets
 
-ALL ASSETS MADE BY ME IN FIGMA
-
+N/A
 ---
 
 ## GenAI
 
-NO AI
+AI used for scripting!
 ---
