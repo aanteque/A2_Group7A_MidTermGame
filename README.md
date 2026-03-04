@@ -7,7 +7,7 @@ GBDA302 A1
 ## Authors
 
 Alejandra Antequera - aanteque - 21073624
-Dolapo Ajiboye 
+Dolapo Ajiboye | 21066026
 
 ---
 
@@ -29,9 +29,11 @@ Fuzzy Bet is a memory game where you put money behind your choices.
 ## Iteration Notes
 
 Post-Playtest: Three changes made based on playtesting
+
 - N/A
 
 Post-Showcase: Two planned improvements
+
 - N/A
 
 ---
@@ -46,10 +48,8 @@ Learning Goals:
 
 ## Assets
 
-N/A
----
+## N/A
 
 ## GenAI
 
-AI used for scripting!
----
+## AI used for scripting!
