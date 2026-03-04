@@ -7,7 +7,7 @@ GBDA302 Side Quest 5 Sad Lonely Stressed Blob
 ## Authors
 
 Alejandra Antequera: 21073624
-
+Dolapo Ajiboye 
 ---
 
 ## Description
