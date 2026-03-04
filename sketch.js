@@ -12,7 +12,7 @@ let selectedAnswer = -1;
 let logMsg = 'Select a wager, then hit REVEAL.';
 let logType = 'muted';
 let glitching = false;
-
+// hi Ally :)))))) 
 const CHIP_VALUES = [5, 10, 25, 50, 'ALL'];
 let chipBtns = [];
 let answerBtns = [];
@@ -21,7 +21,7 @@ let revealHover = false;   // is mouse over reveal btn
 let revealFill = 0;        // 0-1 animated fill progress
 let answerHover = -1;      // index of hovered answer btn
 let answerH = 36;          // animated height of answer section (collapsed=36, expanded=92)
-
+// GITHUB PLEAAE
 const C = {
   bg:    [8,  10, 15],
   card:  [13, 16, 23],
