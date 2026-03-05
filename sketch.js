@@ -56,17 +56,19 @@ const Y_LOG = Y_ANSWER + H_ANSWER_EXPANDED + GAP;
 const Y_REVEAL = Y_LOG + H_LOG + GAP;
 
 // ── Game state ────────────────────────────────────────────────────────────────
-let chips = 100,
+let chips = 50,
   streak = 0,
   currentBet = 0;
 let act = 1; // 1 = Tutorial, 2 = Sum Blitz
 let actRound = 1; // 1-5 for act 1, 1-6 for act 2
+let finalChips = 0; // stored when game ends
 
 let correctAnswer = 0;
 let sumNumbers = []; // act 2 numbers to sum
 let numPositions = []; // act 2 screen positions
 let numFlips = []; // act 2: flip type per number: 0=normal, 1=h-mirror, 2=v-flip, 3=both
-let state = "BET"; // BET | FLASH | ANSWER | RESULT | ACT_TRANSITION
+let act1Pos = { x: 0, y: 0 }; // act 1 number position (randomised each flash)
+let state = "SPLASH"; // SPLASH | BET | FLASH | ANSWER | RESULT | ACT_TRANSITION | GAME_OVER
 let isMirrored = false;
 let flipType = 0; // act 1: 0=normal, 1=h-mirror, 2=v-flip, 3=both
 
@@ -79,11 +81,15 @@ let selectedAnswer = -1;
 let logMsg = "Select a wager, then hit REVEAL.";
 let logType = "muted";
 let glitching = false;
+let answerTimer = 0; // counts down 6000ms while in ANSWER state
+const ANSWER_TIME = 6000;
 
 const CHIP_VALUES = [5, 10, 25, 50, "ALL"];
 let chipBtns = [];
 let answerBtns = [];
 let revealBtn = null;
+let startBtn = null; // splash screen
+let playAgainBtn = null; // game over screen
 let revealHover = false;
 let revealFill = 0;
 let answerHover = -1;
@@ -91,41 +97,25 @@ let answerH = H_ANSWER_COLLAPSED;
 
 // ── Difficulty tables ─────────────────────────────────────────────────────────
 function getA1Diff() {
-  // mirror  = chance of horizontal flip (scale -1,1)
-  // vflip   = chance of vertical flip   (scale  1,-1)  — starts round 3
-  // both    = chance of both transforms simultaneously — starts round 4
+  // All rounds always have some flip — mirror/vflip/both weights shift each round
+  // 4 rounds total
   const tiers = [
-    {
-      ms: 1800,
-      mirror: 0.0,
-      vflip: 0.0,
-      both: 0.0,
-      label: "TUTORIAL",
-      mult: 1.5,
-    },
-    { ms: 1200, mirror: 0.15, vflip: 0.0, both: 0.0, label: "EASY", mult: 1.8 },
-    { ms: 800, mirror: 0.2, vflip: 0.2, both: 0.0, label: "SHAKY", mult: 2.2 },
-    {
-      ms: 550,
-      mirror: 0.25,
-      vflip: 0.25,
-      both: 0.15,
-      label: "BLURRED",
-      mult: 2.8,
-    },
-    { ms: 350, mirror: 0.3, vflip: 0.3, both: 0.2, label: "FUZZY", mult: 3.5 },
+    { ms: 1600, label: "EASY", mult: 1.5 },
+    { ms: 1000, label: "SHAKY", mult: 2.0 },
+    { ms: 650, label: "BLURRED", mult: 2.5 },
+    { ms: 380, label: "FUZZY", mult: 3.5 },
   ];
   return tiers[min(actRound - 1, tiers.length - 1)];
 }
 
 function getA2Diff() {
-  // flipChance = probability each individual number gets a random flip
+  // Every number is always flipped (flipChance: 1.0 across all rounds)
   const tiers = [
     {
       ms: 2200,
       count: 2,
       scatter: false,
-      flipChance: 0.0,
+      flipChance: 1.0,
       label: "CALM",
       mult: 1.5,
     },
@@ -133,7 +123,7 @@ function getA2Diff() {
       ms: 1600,
       count: 2,
       scatter: true,
-      flipChance: 0.2,
+      flipChance: 1.0,
       label: "DRIFTING",
       mult: 1.8,
     },
@@ -141,31 +131,31 @@ function getA2Diff() {
       ms: 1100,
       count: 3,
       scatter: true,
-      flipChance: 0.3,
+      flipChance: 1.0,
       label: "SPREAD",
       mult: 2.2,
     },
     {
-      ms: 800,
+      ms: 3000,
       count: 3,
       scatter: true,
-      flipChance: 0.4,
+      flipChance: 1.0,
       label: "CHAOS",
       mult: 2.8,
     },
     {
-      ms: 600,
+      ms: 3000,
       count: 4,
       scatter: true,
-      flipChance: 0.5,
+      flipChance: 1.0,
       label: "FRENZY",
       mult: 3.5,
     },
     {
-      ms: 400,
+      ms: 3000,
       count: 5,
       scatter: true,
-      flipChance: 0.6,
+      flipChance: 1.0,
       label: "MAYHEM",
       mult: 4.5,
     },
@@ -217,6 +207,16 @@ function draw() {
   fill(0, 229, 255, 6);
   ellipse(430, CH - 60, 400, 260);
 
+  // Full-screen overlay states
+  if (state === "SPLASH") {
+    drawSplash();
+    return;
+  }
+  if (state === "GAME_OVER") {
+    drawGameOver();
+    return;
+  }
+
   // ACT TRANSITION takes over the whole canvas
   if (state === "ACT_TRANSITION") {
     drawActTransition();
@@ -238,6 +238,10 @@ function draw() {
     flashTimer -= deltaTime;
     if (flashTimer <= 0) endFlash();
     if (flashTimer < flashDuration * 0.3) glitching = true;
+  }
+  if (state === "ANSWER") {
+    answerTimer -= deltaTime;
+    if (answerTimer <= 0) handleTimeout();
   }
   if (state === "RESULT") {
     resultTimer -= deltaTime;
@@ -295,7 +299,7 @@ function drawHeader() {
 //  STATS
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStats() {
-  let totalRounds = act === 1 ? 5 : 6;
+  let totalRounds = act === 1 ? 4 : 6;
   let labels = ["CHIPS", "ROUND", "STREAK"];
   let values = [chips, actRound + "/" + totalRounds, streak];
   let tints = ["amber", "cyan", "green"];
@@ -403,8 +407,9 @@ function drawArena() {
 
 // ─── Act 1 flash: single number, optionally mirrored / flipped ───────────────
 function drawAct1Flash(ax, aw, fadeA) {
-  let cx = ax + aw / 2;
-  let cy = Y_ARENA + H_ARENA / 2 + 8;
+  // Use randomised position stored in act1Pos
+  let cx = act1Pos.x;
+  let cy = act1Pos.y;
   let a01 = fadeA / 255;
   let ox = 0,
     oy = 0;
@@ -415,11 +420,10 @@ function drawAct1Flash(ax, aw, fadeA) {
 
   let isH = flipType === 1 || flipType === 3;
   let isV = flipType === 2 || flipType === 3;
-  let isAny = flipType !== 0;
 
-  // colour: red tint when any transform, white when clean
-  let gr = isAny ? "255,45,74" : "255,255,255";
-  let gc = isAny ? "255,45,74" : "0,229,255";
+  // Always red-tinted since there's always a transform
+  let gr = "255,45,74";
+  let gc = "255,45,74";
 
   push();
   translate(cx + ox, cy + oy);
@@ -427,7 +431,7 @@ function drawAct1Flash(ax, aw, fadeA) {
   if (isV) scale(1, -1);
 
   setShadow(`rgba(${gr},${(a01 * 0.6).toFixed(2)})`, 30);
-  fill(isAny ? col("red", fadeA) : col("white", fadeA));
+  fill(col("red", fadeA));
   setFont(120, "display");
   textAlign(CENTER, CENTER);
   text(correctAnswer, 0, 0);
@@ -515,8 +519,8 @@ function drawBetSection() {
 
   for (let i = 0; i < CHIP_VALUES.length; i++) {
     let val = CHIP_VALUES[i];
-    let realVal = val === "ALL" ? chips : val;
-    let active = currentBet === realVal && realVal > 0 && state === "BET";
+    let realVal = val === "ALL" ? 50 : val;
+    let active = currentBet === realVal && state === "BET";
     let disabled = state !== "BET";
     chipBtns.push({ x: bx, y: by, w: bw, h: bh, realVal });
     drawChipBtn(bx, by, bw, bh, String(val), active, disabled);
@@ -568,9 +572,7 @@ function drawAnswerSection() {
       ? "MIRRORED + FLIPPED \u2014 REAL NUMBER?"
       : flipType === 2
         ? "UPSIDE DOWN \u2014 REAL NUMBER?"
-        : flipType === 1
-          ? "IT WAS MIRRORED \u2014 WHAT WAS THE REAL NUMBER?"
-          : "WHAT NUMBER DID YOU SEE?";
+        : "IT WAS MIRRORED \u2014 WHAT WAS THE REAL NUMBER?";
   let lbl = act === 1 ? flipLabel : "WHAT WAS THE SUM?";
   fill(col("muted"));
   setFont(10, "ui");
@@ -607,6 +609,24 @@ function drawAnswerSection() {
       drawAnswerBtn(bx, by, bw, bh, val, btnState, hovered, btnAlpha, isClose);
     }
     bx += bw + gap;
+  }
+
+  // countdown bar — only visible during ANSWER state
+  if (state === "ANSWER") {
+    let pct = constrain(answerTimer / ANSWER_TIME, 0, 1);
+    let urgent = pct < 0.35;
+    let barRgb = urgent ? "255,45,74" : "0,229,255";
+    let bc = urgent ? col("red") : col("cyan");
+    // track
+    fill(col("bord"));
+    noStroke();
+    rect(x, Y_ANSWER + answerH - 3, w, 3);
+    // fill
+    setShadow(`rgba(${barRgb},0.8)`, urgent ? 10 : 6);
+    fill(bc);
+    noStroke();
+    rect(x, Y_ANSWER + answerH - 3, w * pct, 3);
+    clearShadow();
   }
 }
 
@@ -772,6 +792,242 @@ function drawActTransition() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  SPLASH SCREEN
+// ═════════════════════════════════════════════════════════════════════════════
+function drawSplash() {
+  // Title
+  textAlign(CENTER, TOP);
+  setShadow("rgba(255,45,74,0.2)", 80);
+  fill(col("white"));
+  setFont(64, "display");
+  text("F U Z Z Y  B E T", CW / 2, Y_HEADER);
+  setShadow("rgba(255,45,74,0.4)", 40);
+  text("F U Z Z Y  B E T", CW / 2, Y_HEADER);
+  setShadow("rgba(255,45,74,0.8)", 20);
+  text("F U Z Z Y  B E T", CW / 2, Y_HEADER);
+  clearShadow();
+  fill(col("white"));
+  text("F U Z Z Y  B E T", CW / 2, Y_HEADER);
+
+  setFont(13, "ui");
+  fill(col("muted"));
+  text("A game about numbers you can't trust", CW / 2, Y_HEADER + 72);
+
+  // Instructions card
+  let cx = PAD,
+    cw = CW - PAD * 2,
+    cy = Y_STATS,
+    ch = CH - Y_STATS - PAD - 68;
+  drawCard(cx, cy, cw, ch);
+
+  let tx = CW / 2,
+    ty = cy + 24;
+  setFont(18, "display");
+  fill(col("amber"));
+  textAlign(CENTER, TOP);
+  setShadow("rgba(255,170,0,0.4)", 12);
+  text("HOW TO PLAY", tx, ty);
+  clearShadow();
+
+  setFont(11, "ui");
+  fill(col("muted"));
+  textAlign(LEFT, TOP);
+  let lx = cx + 24,
+    lw = cw - 48;
+  let lines = [
+    { label: "ACT I  \u2014  TUTORIAL  (4 rounds)", color: "cyan" },
+    {
+      text: "A number flashes somewhere on screen. It will always be mirrored, flipped upside-down, or both. Bet chips, then pick the real number from four choices.",
+    },
+    { spacer: true },
+    { label: "ACT II \u2014  SUM BLITZ  (6 rounds)", color: "purple" },
+    {
+      text: "Multiple numbers appear scattered across the screen. Add them up in your head, then pick the correct sum. Some numbers may be flipped. In later rounds, numbers stay longer but there are more of them.",
+    },
+    { spacer: true },
+    { label: "SCORING", color: "amber" },
+    { text: "Correct: win your bet \xd7 the round multiplier." },
+    { text: "Act II close (\xb12): win half the multiplier." },
+    { text: "Act II off by \u22645: break even." },
+    { text: "Wrong: lose DOUBLE your bet. Chips CAN go negative." },
+    { spacer: true },
+    { label: "GOAL", color: "green" },
+    {
+      text: "Survive all 10 rounds and finish with as many chips as possible. You start with 50.",
+    },
+  ];
+
+  let lineY = ty + 32;
+  let lineH = 16;
+  for (let l of lines) {
+    if (l.spacer) {
+      lineY += 8;
+      continue;
+    }
+    if (l.label) {
+      let lc = C[l.color] || C.cyan;
+      setShadow(`rgba(${lc[0]},${lc[1]},${lc[2]},0.4)`, 8);
+      fill(col(l.color));
+      setFont(13, "display");
+      textAlign(LEFT, TOP);
+      text(l.label, lx, lineY);
+      clearShadow();
+      lineY += 18;
+    } else {
+      fill(col("text"));
+      setFont(11, "ui");
+      textAlign(LEFT, TOP);
+      // word-wrap manually
+      let words = l.text.split(" ");
+      let line = "";
+      for (let w of words) {
+        let test = line + (line ? " " : "") + w;
+        if (textWidth(test) > lw - 10) {
+          text(line, lx + 10, lineY);
+          lineY += lineH;
+          line = w;
+        } else {
+          line = test;
+        }
+      }
+      if (line) {
+        text(line, lx + 10, lineY);
+        lineY += lineH;
+      }
+    }
+  }
+
+  // Start button
+  let bw = 240,
+    bh = H_REVEAL;
+  let bx = CW / 2 - bw / 2,
+    by = CH - PAD - bh;
+  let hovered = startBtn ? inBtn(mouseX, mouseY, startBtn) : false;
+  let fill01 = hovered ? 1 : 0;
+
+  setShadow("rgba(0,229,255,0.35)", 14);
+  noFill();
+  stroke(col("cyan"));
+  strokeWeight(1);
+  rect(bx, by, bw, bh);
+  clearShadow();
+
+  fill(color(0, 15, 20));
+  noStroke();
+  rect(bx, by, bw, bh);
+  if (hovered) {
+    fill(col("cyan"));
+    noStroke();
+    rect(bx, by, bw, bh);
+  }
+
+  noStroke();
+  fill(hovered ? col("bg") : col("cyan"));
+  setFont(22, "display");
+  textAlign(CENTER, CENTER);
+  text("START GAME", CW / 2, by + bh / 2 + 1);
+
+  startBtn = { x: bx, y: by, w: bw, h: bh };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GAME OVER SCREEN
+// ═════════════════════════════════════════════════════════════════════════════
+function drawGameOver() {
+  let chipColor =
+    finalChips >= 100 ? "green" : finalChips >= 0 ? "amber" : "red";
+  let chipRgb = C[chipColor];
+
+  // Big centred card
+  let cardW = CW - PAD * 2,
+    cardH = 300;
+  let cardX = PAD,
+    cardY = CH / 2 - cardH / 2 - 20;
+  drawCard(cardX, cardY, cardW, cardH);
+
+  textAlign(CENTER, CENTER);
+  let midX = CW / 2,
+    midY = cardY + cardH / 2;
+
+  // GAME OVER text — layered glow in red
+  setShadow("rgba(255,45,74,0.25)", 80);
+  fill(col("white"));
+  setFont(80, "display");
+  text("GAME OVER!", midX, midY - 60);
+  setShadow("rgba(255,45,74,0.5)", 40);
+  text("GAME OVER!", midX, midY - 60);
+  setShadow("rgba(255,45,74,0.9)", 18);
+  text("GAME OVER!", midX, midY - 60);
+  clearShadow();
+  fill(col("white"));
+  text("GAME OVER!", midX, midY - 60);
+
+  // divider
+  stroke(col("bord"));
+  strokeWeight(1);
+  line(cardX + 40, midY, cardX + cardW - 40, midY);
+  noStroke();
+
+  // Chip count
+  setFont(13, "ui");
+  fill(col("muted"));
+  textAlign(CENTER, CENTER);
+  text("FINAL CHIPS", midX, midY + 24);
+
+  setShadow(`rgba(${chipRgb[0]},${chipRgb[1]},${chipRgb[2]},0.6)`, 24);
+  fill(col(chipColor));
+  setFont(64, "display");
+  text(finalChips, midX, midY + 68);
+  clearShadow();
+
+  // Play again button
+  let bw = 220,
+    bh = H_REVEAL;
+  let bx = CW / 2 - bw / 2,
+    by = cardY + cardH + GAP * 2;
+  let hovered = playAgainBtn ? inBtn(mouseX, mouseY, playAgainBtn) : false;
+
+  setShadow("rgba(255,45,74,0.35)", 14);
+  noFill();
+  stroke(col("red"));
+  strokeWeight(1);
+  rect(bx, by, bw, bh);
+  clearShadow();
+
+  fill(color(30, 5, 10));
+  noStroke();
+  rect(bx, by, bw, bh);
+  if (hovered) {
+    fill(col("red"));
+    noStroke();
+    rect(bx, by, bw, bh);
+  }
+
+  noStroke();
+  fill(hovered ? col("bg") : col("red"));
+  setFont(22, "display");
+  textAlign(CENTER, CENTER);
+  text("PLAY AGAIN", CW / 2, by + bh / 2 + 1);
+
+  playAgainBtn = { x: bx, y: by, w: bw, h: bh };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  FULL RESET
+// ═════════════════════════════════════════════════════════════════════════════
+function fullReset() {
+  chips = 50;
+  streak = 0;
+  act = 1;
+  actRound = 1;
+  finalChips = 0;
+  startBtn = null;
+  playAgainBtn = null;
+  resetRound();
+  state = "BET";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  CARD
 // ═════════════════════════════════════════════════════════════════════════════
 function drawCard(x, y, w, h) {
@@ -793,7 +1049,8 @@ function mouseDragged() {
 }
 
 function updateHover() {
-  if (state === "ACT_TRANSITION") return;
+  if (state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION")
+    return;
   revealHover = revealBtn ? inBtn(mouseX, mouseY, revealBtn) : false;
   answerHover = -1;
   if (state === "ANSWER") {
@@ -807,6 +1064,18 @@ function updateHover() {
 }
 
 function mousePressed() {
+  if (state === "SPLASH") {
+    if (startBtn && inBtn(mouseX, mouseY, startBtn)) {
+      fullReset();
+    }
+    return;
+  }
+  if (state === "GAME_OVER") {
+    if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) {
+      state = "SPLASH";
+    }
+    return;
+  }
   if (state === "ACT_TRANSITION") return;
   updateHover();
   if (revealBtn && !revealBtn.disabled && inBtn(mouseX, mouseY, revealBtn)) {
@@ -816,9 +1085,7 @@ function mousePressed() {
   if (state === "BET") {
     for (let b of chipBtns) {
       if (inBtn(mouseX, mouseY, b)) {
-        let v = min(b.realVal, chips);
-        if (v <= 0) return;
-        currentBet = v;
+        currentBet = b.realVal;
         setLog("Wagering " + currentBet + " chips. Hit REVEAL.", "info");
         return;
       }
@@ -845,17 +1112,18 @@ function startFlash() {
   let diff = getDiff();
 
   if (act === 1) {
-    // Pick a flip type using the diff probabilities
-    let r = random();
-    if (r < diff.both)
-      flipType = 3; // h-mirror + v-flip
-    else if (r < diff.both + diff.vflip)
-      flipType = 2; // v-flip only
-    else if (r < diff.both + diff.vflip + diff.mirror)
-      flipType = 1; // h-mirror only
-    else flipType = 0; // normal
+    // Always apply some transform — pick randomly from h-mirror, v-flip, or both
+    flipType = floor(random(1, 4)); // 1=h, 2=v, 3=both — never 0
+    isMirrored = flipType === 1 || flipType === 3;
 
-    isMirrored = flipType === 1 || flipType === 3; // used for label / choice hint
+    // Random position within the arena (with margin so number stays visible)
+    let margin = 70,
+      aw = CW - PAD * 2;
+    act1Pos = {
+      x: PAD + random(margin, aw - margin),
+      y: Y_ARENA + random(margin, H_ARENA - margin),
+    };
+
     let maxN = actRound <= 2 ? 9 : 99;
     let minN = actRound <= 2 ? 1 : 10;
     correctAnswer = floor(random(minN, maxN + 1));
@@ -891,8 +1159,7 @@ function startFlash() {
     if (flipType === 3)
       setLog("MIRRORED + FLIPPED \u2014 trust nothing.", "bad");
     else if (flipType === 2) setLog("UPSIDE DOWN \u2014 stay sharp.", "bad");
-    else if (flipType === 1) setLog("MIRRORED \u2014 trust nothing.", "bad");
-    else setLog("Focus...", "info");
+    else setLog("MIRRORED \u2014 trust nothing.", "bad");
   } else {
     setLog("Watch the numbers!", "info");
   }
@@ -931,6 +1198,7 @@ function generatePositions(count, scatter) {
 function endFlash() {
   state = "ANSWER";
   glitching = false;
+  answerTimer = ANSWER_TIME;
   setLog(
     act === 1 ? "Pick your answer!" : "What was the sum? Close counts!",
     "info",
@@ -948,10 +1216,10 @@ function handleAnswer(val) {
       streak++;
       setLog("+" + win + " chips! Correct!  (\xd7" + diff.mult + ")", "good");
     } else {
-      chips = max(0, chips - currentBet);
+      chips -= currentBet * 2;
       streak = 0;
       setLog(
-        "-" + currentBet + " chips.  It was " + correctAnswer + ".",
+        "-" + currentBet * 2 + " chips.  It was " + correctAnswer + ".",
         "bad",
       );
     }
@@ -982,9 +1250,12 @@ function handleAnswer(val) {
       );
     } else {
       let loss = floor(currentBet * 0.5);
-      chips = max(0, chips - loss);
+      chips -= currentBet * 2;
       streak = 0;
-      setLog("-" + loss + " chips.  Sum was " + correctAnswer + ".", "bad");
+      setLog(
+        "-" + currentBet * 2 + " chips.  Sum was " + correctAnswer + ".",
+        "bad",
+      );
     }
   }
 
@@ -992,18 +1263,21 @@ function handleAnswer(val) {
   resultTimer = 2000;
 }
 
-function nextRound() {
-  if (chips <= 0) {
-    chips = 100;
-    act = 1;
-    actRound = 1;
-    streak = 0;
-    setLog("BUST!  Back to Act I with 100 chips.", "bad");
-    resetRound();
-    return;
-  }
+function handleTimeout() {
+  // Time's up — lose double the bet, same as a wrong answer
+  selectedAnswer = -1;
+  chips -= currentBet * 2;
+  streak = 0;
+  setLog(
+    "TIME'S UP! -" + currentBet * 2 + " chips.  It was " + correctAnswer + ".",
+    "bad",
+  );
+  state = "RESULT";
+  resultTimer = 2000;
+}
 
-  let maxRounds = act === 1 ? 5 : 6;
+function nextRound() {
+  let maxRounds = act === 1 ? 4 : 6;
 
   if (actRound >= maxRounds) {
     if (act === 1) {
@@ -1011,11 +1285,9 @@ function nextRound() {
       transitionTimer = 3000;
       return;
     } else {
-      // completed both acts — loop
-      act = 1;
-      actRound = 1;
-      setLog("You beat Fuzzy Bet!  Starting over\u2026", "special");
-      resetRound();
+      // All rounds done — game over
+      finalChips = chips;
+      state = "GAME_OVER";
       return;
     }
   }
