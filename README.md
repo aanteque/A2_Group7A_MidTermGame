@@ -7,6 +7,7 @@ GBDA302 A1
 ## Authors
 
 Alejandra Antequera - aanteque - 21073624
+Elizabeth (Liza) Storchak 21060869
 Dolapo Ajiboye 
 
 ---
