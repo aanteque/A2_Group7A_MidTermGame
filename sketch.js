@@ -94,6 +94,7 @@ let revealHover = false;
 let revealFill = 0;
 let answerHover = -1;
 let answerH = H_ANSWER_COLLAPSED;
+let allSelected = false; // true when ALL chip button was last pressed
 
 // ── Difficulty tables ─────────────────────────────────────────────────────────
 function getA1Diff() {
@@ -519,10 +520,19 @@ function drawBetSection() {
 
   for (let i = 0; i < CHIP_VALUES.length; i++) {
     let val = CHIP_VALUES[i];
-    let realVal = val === "ALL" ? 50 : val;
-    let active = currentBet === realVal && state === "BET";
+    let realVal = val === "ALL" ? chips : val;
+    let active =
+      state === "BET" &&
+      (val === "ALL" ? allSelected : !allSelected && currentBet === realVal);
     let disabled = state !== "BET";
-    chipBtns.push({ x: bx, y: by, w: bw, h: bh, realVal });
+    chipBtns.push({
+      x: bx,
+      y: by,
+      w: bw,
+      h: bh,
+      realVal,
+      isAll: val === "ALL",
+    });
     drawChipBtn(bx, by, bw, bh, String(val), active, disabled);
     bx += bw + gap;
   }
@@ -1086,6 +1096,7 @@ function mousePressed() {
     for (let b of chipBtns) {
       if (inBtn(mouseX, mouseY, b)) {
         currentBet = b.realVal;
+        allSelected = b.isAll || false;
         setLog("Wagering " + currentBet + " chips. Hit REVEAL.", "info");
         return;
       }
@@ -1109,6 +1120,7 @@ function inBtn(mx, my, b) {
 //  GAME LOGIC
 // ═════════════════════════════════════════════════════════════════════════════
 function startFlash() {
+  if (allSelected) currentBet = chips; // lock in the live chip count
   let diff = getDiff();
 
   if (act === 1) {
@@ -1312,6 +1324,7 @@ function resetRound() {
   numPositions = [];
   numFlips = [];
   flipType = 0;
+  allSelected = false;
   state = "BET";
 }
 
