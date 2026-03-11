@@ -4,20 +4,32 @@
 
 // ── Colour palette (casino theme) ────────────────────────────────────────────
 const C = {
-  bg: [0, 0, 0], // pure black background
-  card: [28, 22, 60], // dark purple card fill
-  bord: [200, 140, 20], // gold/amber border
-  red: [176, 24, 24], // casino red #B01818
-  redHi: [210, 45, 45], // lighter red for hover
-  amber: [220, 155, 10], // gold
-  cyan: [17, 68, 177], // chips blue #1144B1
-  green: [12, 139, 33], // streak green #0C8B21
-  purple: [156, 29, 176], // round purple #9C1DB0
-  muted: [130, 110, 170], // muted purple-grey
-  text: [240, 235, 255], // near-white
+  bg: [0, 0, 0],
+  card: [28, 22, 60],
+  bord: [200, 140, 20],
+  red: [176, 24, 24],
+  redHi: [210, 45, 45],
+  amber: [220, 155, 10],
+  cyan: [17, 68, 177],
+  green: [12, 139, 33],
+  purple: [156, 29, 176],
+  muted: [130, 110, 170],
+  text: [240, 235, 255],
   white: [255, 255, 255],
-  shadow: [90, 30, 120], // purple offset shadow for title
+  shadow: [90, 30, 120],
 };
+
+// ── Difficulty ────────────────────────────────────────────────────────────────
+// 0 = EASY, 1 = NORMAL, 2 = HARD
+let difficulty = 1;
+
+const DIFF_SETTINGS = [
+  { label: "EASY",   color: "green",  desc: "Longer flash times. Forgiving.",        timeScale: 1.6, choiceSpread: 8  },
+  { label: "NORMAL", color: "amber",  desc: "Balanced. The intended experience.",     timeScale: 1.0, choiceSpread: 5  },
+  { label: "HARD",   color: "red",    desc: "Brutal flash times. Tight choices.",     timeScale: 0.6, choiceSpread: 2  },
+];
+
+let diffBtns = [];
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const PAD = 20;
@@ -34,19 +46,8 @@ const H_LOG = 24;
 const H_REVEAL = 52;
 
 const CH =
-  PAD +
-  H_HEADER +
-  GAP +
-  H_STATS +
-  GAP +
-  H_ARENA +
-  GAP +
-  H_BET +
-  GAP +
-  H_LOG +
-  GAP +
-  H_REVEAL +
-  PAD;
+  PAD + H_HEADER + GAP + H_STATS + GAP + H_ARENA + GAP +
+  H_BET + GAP + H_LOG + GAP + H_REVEAL + PAD;
 
 const Y_HEADER = PAD;
 const Y_STATS = Y_HEADER + H_HEADER + GAP;
@@ -57,28 +58,16 @@ const Y_LOG = Y_BET + H_BET + GAP;
 const Y_REVEAL = Y_LOG + H_LOG + GAP;
 
 // ── Game state ────────────────────────────────────────────────────────────────
-let chips = 50,
-  streak = 0,
-  currentBet = 0;
-let act = 1;
-let actRound = 1;
-let finalChips = 0;
-
+let chips = 50, streak = 0, currentBet = 0;
+let act = 1, actRound = 1, finalChips = 0;
 let correctAnswer = 0;
-let sumNumbers = [],
-  numPositions = [],
-  numFlips = [];
+let sumNumbers = [], numPositions = [], numFlips = [];
 let act1Pos = { x: 0, y: 0 };
 let state = "SPLASH";
-let isMirrored = false;
-let flipType = 0;
-
-let flashTimer = 0,
-  flashDuration = 0;
-let resultTimer = 0,
-  transitionTimer = 0;
-let choices = [];
-let selectedAnswer = -1;
+let isMirrored = false, flipType = 0;
+let flashTimer = 0, flashDuration = 0;
+let resultTimer = 0, transitionTimer = 0;
+let choices = [], selectedAnswer = -1;
 let logMsg = "Select a wager, then hit REVEAL.";
 let logType = "muted";
 let glitching = false;
@@ -95,101 +84,47 @@ function updateChipValues() {
   else CHIP_VALUES = [5, 10, 25, 50, "ALL"];
 }
 
-let chipBtns = [],
-  answerBtns = [];
-let revealBtn = null,
-  startBtn = null,
-  playAgainBtn = null;
-let revealHover = false,
-  revealFill = 0;
+let chipBtns = [], answerBtns = [];
+let revealBtn = null, startBtn = null, playAgainBtn = null;
+let revealHover = false, revealFill = 0;
 let answerHover = -1;
 let answerH = H_ANSWER_COLLAPSED;
-let allSelected = false;
-let lastBet = 0;
-let wagerPulse = 0;
+let allSelected = false, lastBet = 0, wagerPulse = 0;
 
-// ── Difficulty ────────────────────────────────────────────────────────────────
+// ── Difficulty scaling helpers ────────────────────────────────────────────────
 function getA1Diff() {
+  const scale = DIFF_SETTINGS[difficulty].timeScale;
   const t = [
-    { ms: 1600, label: "EASY", mult: 1.5 },
-    { ms: 1000, label: "SHAKY", mult: 2.0 },
-    { ms: 650, label: "BLURRED", mult: 2.5 },
-    { ms: 380, label: "FUZZY", mult: 3.5 },
+    { ms: 1600 * scale, label: "EASY",    mult: 1.5 },
+    { ms: 1000 * scale, label: "SHAKY",   mult: 2.0 },
+    { ms: 650  * scale, label: "BLURRED", mult: 2.5 },
+    { ms: 380  * scale, label: "FUZZY",   mult: 3.5 },
   ];
   return t[min(actRound - 1, t.length - 1)];
 }
 
 function getA2Diff() {
+  const scale = DIFF_SETTINGS[difficulty].timeScale;
   const t = [
-    {
-      ms: 2200,
-      count: 2,
-      scatter: false,
-      flipChance: 1.0,
-      label: "CALM",
-      mult: 1.5,
-    },
-    {
-      ms: 1600,
-      count: 2,
-      scatter: true,
-      flipChance: 1.0,
-      label: "DRIFTING",
-      mult: 1.8,
-    },
-    {
-      ms: 1100,
-      count: 3,
-      scatter: true,
-      flipChance: 1.0,
-      label: "SPREAD",
-      mult: 2.2,
-    },
-    {
-      ms: 3000,
-      count: 3,
-      scatter: true,
-      flipChance: 1.0,
-      label: "CHAOS",
-      mult: 2.8,
-    },
-    {
-      ms: 3000,
-      count: 4,
-      scatter: true,
-      flipChance: 1.0,
-      label: "FRENZY",
-      mult: 3.5,
-    },
-    {
-      ms: 3000,
-      count: 5,
-      scatter: true,
-      flipChance: 1.0,
-      label: "MAYHEM",
-      mult: 4.5,
-    },
+    { ms: 2200 * scale, count: 2, scatter: false, flipChance: 1.0, label: "CALM",     mult: 1.5 },
+    { ms: 1600 * scale, count: 2, scatter: true,  flipChance: 1.0, label: "DRIFTING", mult: 1.8 },
+    { ms: 1100 * scale, count: 3, scatter: true,  flipChance: 1.0, label: "SPREAD",   mult: 2.2 },
+    { ms: 3000 * scale, count: 3, scatter: true,  flipChance: 1.0, label: "CHAOS",    mult: 2.8 },
+    { ms: 3000 * scale, count: 4, scatter: true,  flipChance: 1.0, label: "FRENZY",   mult: 3.5 },
+    { ms: 3000 * scale, count: 5, scatter: true,  flipChance: 1.0, label: "MAYHEM",   mult: 4.5 },
   ];
   return t[min(actRound - 1, t.length - 1)];
 }
 
-function getDiff() {
-  return act === 1 ? getA1Diff() : getA2Diff();
-}
+function getDiff() { return act === 1 ? getA1Diff() : getA2Diff(); }
 
 // ── p5 helpers ────────────────────────────────────────────────────────────────
 function col(key, a) {
   let c = C[key] || C.white;
   return a !== undefined ? color(c[0], c[1], c[2], a) : color(c[0], c[1], c[2]);
 }
-function setShadow(c, blur) {
-  drawingContext.shadowColor = c;
-  drawingContext.shadowBlur = blur;
-}
-function clearShadow() {
-  drawingContext.shadowColor = "transparent";
-  drawingContext.shadowBlur = 0;
-}
+function setShadow(c, blur) { drawingContext.shadowColor = c; drawingContext.shadowBlur = blur; }
+function clearShadow() { drawingContext.shadowColor = "transparent"; drawingContext.shadowBlur = 0; }
 function setFont(size, style) {
   textSize(size);
   if (style === "display") {
@@ -199,27 +134,19 @@ function setFont(size, style) {
   }
 }
 
-// ── Outlined text helper ──────────────────────────────────────────────────────
-// Draws text with a 2px black outline. Call with fill() already set to white.
 function outlineText(str, x, y) {
   clearShadow();
   drawingContext.lineJoin = "round";
-  stroke(0);
-  strokeWeight(4);
+  stroke(0); strokeWeight(4);
   text(str, x, y);
   noStroke();
   text(str, x, y);
 }
 
-// ── Gold border card ──────────────────────────────────────────────────────────
 function drawCard(x, y, w, h, fillColor) {
-  // outer gold border
-  fill(col("bord"));
-  noStroke();
+  fill(col("bord")); noStroke();
   rect(x - 3, y - 3, w + 6, h + 6, 4);
-  // inner fill
-  fill(fillColor || col("card"));
-  noStroke();
+  fill(fillColor || col("card")); noStroke();
   rect(x, y, w, h, 2);
 }
 
@@ -228,41 +155,25 @@ function drawCard(x, y, w, h, fillColor) {
 // ═════════════════════════════════════════════════════════════════════════════
 let logoImg = null;
 
-function preload() {
-  logoImg = loadImage("assets/Calcusino_p.png");
-}
+function preload() { logoImg = loadImage("assets/Calcusino_p.png"); }
 
-function setup() {
-  createCanvas(CW, CH);
-  textFont("Impact");
-}
+function setup() { createCanvas(CW, CH); textFont("Impact"); }
 
 function draw() {
   background(col("bg"));
 
-  if (state === "SPLASH") {
-    drawSplash();
-    return;
-  }
-  if (state === "GAME_OVER") {
-    drawGameOver();
-    return;
-  }
-  if (state === "ACT_TRANSITION") {
+  if (state === "SPLASH")           { drawSplash(); return; }
+  if (state === "GAME_OVER")        { drawGameOver(); return; }
+  if (state === "ACT_TRANSITION")   {
     drawActTransition();
     transitionTimer -= deltaTime;
     if (transitionTimer <= 0) beginAct2();
     return;
   }
 
-  drawHeader();
-  drawStats();
-  drawArena();
-  drawBetSection();
-  drawLog();
-  drawRevealBtn();
+  drawHeader(); drawStats(); drawArena();
+  drawBetSection(); drawLog(); drawRevealBtn();
 
-  // timers
   if (state === "FLASH") {
     flashTimer -= deltaTime;
     if (flashTimer <= 0) endFlash();
@@ -277,49 +188,34 @@ function draw() {
     if (resultTimer <= 0) nextRound();
   }
 
-  if (state === "BET" && currentBet === 0) {
-    wagerPulse = (sin(frameCount * 0.07) + 1) / 2;
-  } else {
-    wagerPulse = 0;
-  }
+  if (state === "BET" && currentBet === 0) wagerPulse = (sin(frameCount * 0.07) + 1) / 2;
+  else wagerPulse = 0;
 
   let targetFill = revealHover && !revealBtn?.disabled ? 1 : 0;
   revealFill += (targetFill - revealFill) * 0.15;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  HEADER  — logo image
+//  HEADER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawHeader() {
   let ty = Y_HEADER;
   if (logoImg) {
-    // scale to fit width with padding, preserve aspect ratio
     let imgW = CW - PAD * 2;
     let imgH = imgW * (logoImg.height / logoImg.width);
     image(logoImg, PAD, ty, imgW, imgH);
   }
-
-  // act subtitle
-  setFont(12, "ui");
-  fill(col("muted"));
-  textAlign(CENTER, TOP);
-  text(
-    act === 1
-      ? "ACT I  —  TUTORIAL: Remember the number"
-      : "ACT II —  SUM BLITZ: Guess the total",
-    CW / 2,
-    ty + 86,
-  );
+  setFont(12, "ui"); fill(col("muted")); textAlign(CENTER, TOP);
+  text(act === 1 ? "ACT I  —  TUTORIAL: Remember the number" : "ACT II —  SUM BLITZ: Guess the total", CW / 2, ty + 86);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  STATS — coloured filled boxes with gold borders
+//  STATS
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStats() {
   let totalRounds = act === 1 ? 4 : 6;
   let labels = ["CHIPS", "ROUND", "STREAK"];
   let values = [chips, actRound + "/" + totalRounds, streak];
-  // [light colour, dark colour] for each box
   let gradients = [
     ["#1144B1", "#113789"],
     ["#9C1DB0", "#650E73"],
@@ -329,34 +225,16 @@ function drawStats() {
 
   for (let i = 0; i < 3; i++) {
     let x = PAD + i * (cw3 + GAP);
-
-    // gold border
-    fill(col("bord"));
-    noStroke();
+    fill(col("bord")); noStroke();
     rect(x - 3, Y_STATS - 3, cw3 + 6, H_STATS + 6, 4);
-
-    // diagonal gradient fill (top-left light → bottom-right dark)
-    let grad = drawingContext.createLinearGradient(
-      x,
-      Y_STATS,
-      x + cw3,
-      Y_STATS + H_STATS,
-    );
+    let grad = drawingContext.createLinearGradient(x, Y_STATS, x + cw3, Y_STATS + H_STATS);
     grad.addColorStop(0, gradients[i][0]);
     grad.addColorStop(1, gradients[i][1]);
     drawingContext.fillStyle = grad;
     drawingContext.fillRect(x, Y_STATS, cw3, H_STATS);
-
-    // label
-    fill(col("white"));
-    setFont(12, "ui");
-    textAlign(CENTER, TOP);
+    fill(col("white")); setFont(12, "ui"); textAlign(CENTER, TOP);
     outlineText(labels[i], x + cw3 / 2, Y_STATS + 10);
-
-    // value
-    fill(col("white"));
-    setFont(34, "display");
-    textAlign(CENTER, TOP);
+    fill(col("white")); setFont(34, "display"); textAlign(CENTER, TOP);
     outlineText(values[i], x + cw3 / 2, Y_STATS + 26);
   }
 }
@@ -365,52 +243,26 @@ function drawStats() {
 //  ARENA
 // ═════════════════════════════════════════════════════════════════════════════
 function drawArena() {
-  let ax = PAD,
-    aw = CW - PAD * 2;
+  let ax = PAD, aw = CW - PAD * 2;
   drawCard(ax, Y_ARENA, aw, H_ARENA);
   let diff = getDiff();
   answerBtns = [];
 
-  fill(col("muted"));
-  setFont(10, "ui");
-  textAlign(LEFT, TOP);
-  text(
-    (act === 1 ? "ACT I" : "ACT II") + "  RND " + actRound,
-    ax + 12,
-    Y_ARENA + 10,
-  );
-
-  textAlign(RIGHT, TOP);
-  fill(col("amber"));
-  setFont(14, "display");
+  fill(col("muted")); setFont(10, "ui"); textAlign(LEFT, TOP);
+  text((act === 1 ? "ACT I" : "ACT II") + "  RND " + actRound, ax + 12, Y_ARENA + 10);
+  textAlign(RIGHT, TOP); fill(col("amber")); setFont(14, "display");
   text("×" + diff.mult, ax + aw - 12, Y_ARENA + 10);
-
-  fill(col("muted"));
-  setFont(10, "ui");
-  textAlign(RIGHT, BOTTOM);
+  fill(col("muted")); setFont(10, "ui"); textAlign(RIGHT, BOTTOM);
   text(diff.label, ax + aw - 12, Y_ARENA + H_ARENA - 10);
 
   if (state === "BET") {
-    fill(col("muted"));
-    setFont(12, "ui");
-    textAlign(CENTER, CENTER);
-    text(
-      act === 1
-        ? "Place your bet,\nthen reveal the number."
-        : "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM.",
-      ax + aw / 2,
-      Y_ARENA + H_ARENA / 2,
-    );
+    fill(col("muted")); setFont(12, "ui"); textAlign(CENTER, CENTER);
+    text(act === 1 ? "Place your bet,\nthen reveal the number." : "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM.", ax + aw / 2, Y_ARENA + H_ARENA / 2);
   }
 
   if (state === "ANSWER" || state === "RESULT") {
-    // Draw answer buttons inside the arena
-    let gap = 8,
-      bw = (aw - 32 - gap * 3) / 4,
-      bh = 52;
-    let bx = ax + 16;
-    let by = Y_ARENA + H_ARENA / 2 - bh / 2;
-
+    let gap = 8, bw = (aw - 32 - gap * 3) / 4, bh = 52;
+    let bx = ax + 16, by = Y_ARENA + H_ARENA / 2 - bh / 2;
     for (let i = 0; i < 4; i++) {
       let val = choices[i] !== undefined ? choices[i] : null;
       let btnState = "idle";
@@ -420,22 +272,18 @@ function drawArena() {
       }
       let hovered = answerHover === i && state === "ANSWER";
       answerBtns.push({ x: bx, y: by, w: bw, h: bh, val });
-      if (val !== null)
-        drawAnswerBtn(bx, by, bw, bh, val, btnState, hovered, 255);
+      if (val !== null) drawAnswerBtn(bx, by, bw, bh, val, btnState, hovered, 255);
       bx += bw + gap;
     }
-
     if (state === "ANSWER") {
       let pct = constrain(answerTimer / ANSWER_TIME, 0, 1);
       let urgent = pct < 0.35;
       let bc = urgent ? col("red") : col("amber");
       let barRgb = urgent ? "210,35,45" : "220,155,10";
-      fill(color(40, 30, 10));
-      noStroke();
+      fill(color(40, 30, 10)); noStroke();
       rect(ax, Y_ARENA + H_ARENA - 5, aw, 5);
       setShadow(`rgba(${barRgb},0.8)`, urgent ? 10 : 6);
-      fill(bc);
-      noStroke();
+      fill(bc); noStroke();
       rect(ax, Y_ARENA + H_ARENA - 5, aw * pct, 5);
       clearShadow();
     }
@@ -445,42 +293,30 @@ function drawArena() {
     let pct01 = constrain(flashTimer / flashDuration, 0, 1);
     let fadeA = map(flashTimer, 0, flashDuration * 0.12, 0, 255);
     fadeA = constrain(fadeA, 0, 255);
-
     if (act === 1) drawAct1Flash(ax, aw, fadeA);
     else drawAct2Flash(ax, aw, fadeA);
-
     let bc = pct01 < 0.3 ? col("red") : col("amber");
     let barRgb = pct01 < 0.3 ? "210,35,45" : "220,155,10";
     setShadow(`rgba(${barRgb},0.8)`, 8);
-    fill(bc);
-    noStroke();
+    fill(bc); noStroke();
     rect(ax, Y_ARENA + H_ARENA - 3, aw * pct01, 3);
     clearShadow();
   }
 }
 
 function drawAct1Flash(ax, aw, fadeA) {
-  let cx = act1Pos.x,
-    cy = act1Pos.y;
+  let cx = act1Pos.x, cy = act1Pos.y;
   let a01 = fadeA / 255;
-  let ox = 0,
-    oy = 0;
-  if (glitching && frameCount % 3 === 0) {
-    ox = random(-6, 6);
-    oy = random(-3, 3);
-  }
+  let ox = 0, oy = 0;
+  if (glitching && frameCount % 3 === 0) { ox = random(-6, 6); oy = random(-3, 3); }
   let isH = flipType === 1 || flipType === 3;
   let isV = flipType === 2 || flipType === 3;
-
   push();
   translate(cx + ox, cy + oy);
   if (isH) scale(-1, 1);
   if (isV) scale(1, -1);
-
   setShadow(`rgba(210,35,45,${(a01 * 0.6).toFixed(2)})`, 30);
-  fill(col("red", fadeA));
-  setFont(120, "display");
-  textAlign(CENTER, CENTER);
+  fill(col("red", fadeA)); setFont(120, "display"); textAlign(CENTER, CENTER);
   text(correctAnswer, 0, 0);
   clearShadow();
   pop();
@@ -489,47 +325,26 @@ function drawAct1Flash(ax, aw, fadeA) {
 function drawAct2Flash(ax, aw, fadeA) {
   let a01 = fadeA / 255;
   let diff = getA2Diff();
-  const hues = [
-    "255,255,255",
-    "80,160,255",
-    "200,100,255",
-    "220,155,10",
-    "60,200,100",
-  ];
+  const hues = ["255,255,255","80,160,255","200,100,255","220,155,10","60,200,100"];
   let sz = diff.count <= 2 ? 90 : diff.count <= 3 ? 72 : 56;
-
   for (let i = 0; i < sumNumbers.length; i++) {
-    let pos = numPositions[i];
-    if (!pos) continue;
+    let pos = numPositions[i]; if (!pos) continue;
     let wobble = diff.scatter ? sin(frameCount * 0.08 + i * 1.3) * 4 : 0;
     let nx = ax + pos.x + wobble;
-    let ny =
-      Y_ARENA +
-      pos.y +
-      cos(frameCount * 0.06 + i * 0.9) * (diff.scatter ? 3 : 0);
-    let ox = 0,
-      oy = 0;
-    if (glitching && frameCount % 3 === 0) {
-      ox = random(-4, 4);
-      oy = random(-2, 2);
-    }
-
+    let ny = Y_ARENA + pos.y + cos(frameCount * 0.06 + i * 0.9) * (diff.scatter ? 3 : 0);
+    let ox = 0, oy = 0;
+    if (glitching && frameCount % 3 === 0) { ox = random(-4, 4); oy = random(-2, 2); }
     let ft = numFlips[i] || 0;
-    let isH = ft === 1 || ft === 3;
-    let isV = ft === 2 || ft === 3;
+    let isH = ft === 1 || ft === 3, isV = ft === 2 || ft === 3;
     let h = ft !== 0 ? "210,35,45" : hues[i % hues.length];
-
     push();
     translate(nx + ox, ny + oy);
-    if (isH) scale(-1, 1);
-    if (isV) scale(1, -1);
+    if (isH) scale(-1, 1); if (isV) scale(1, -1);
     setShadow(`rgba(${h},${(a01 * 0.55).toFixed(2)})`, 20);
     fill(color(...h.split(",").map(Number), fadeA));
-    setFont(sz, "display");
-    textAlign(CENTER, CENTER);
+    setFont(sz, "display"); textAlign(CENTER, CENTER);
     text(sumNumbers[i], 0, 0);
-    clearShadow();
-    pop();
+    clearShadow(); pop();
   }
 }
 
@@ -537,39 +352,21 @@ function drawAct2Flash(ax, aw, fadeA) {
 //  BET SECTION
 // ═════════════════════════════════════════════════════════════════════════════
 function drawBetSection() {
-  let x = PAD,
-    w = CW - PAD * 2;
+  let x = PAD, w = CW - PAD * 2;
   drawCard(x, Y_BET, w, H_BET);
-
-  // WAGER! label — bold white, casino style
-  fill(col("white"));
-  setFont(18, "display");
-  textAlign(CENTER, TOP);
+  fill(col("white")); setFont(18, "display"); textAlign(CENTER, TOP);
   outlineText("WAGER!", x + w / 2, Y_BET + 8);
-
   chipBtns = [];
-  let bh = 32,
-    gap = 8;
+  let bh = 32, gap = 8;
   let bw = (w - 32 - gap * (CHIP_VALUES.length - 1)) / CHIP_VALUES.length;
-  let bx = x + 16,
-    by = Y_BET + 30;
-
+  let bx = x + 16, by = Y_BET + 30;
   for (let i = 0; i < CHIP_VALUES.length; i++) {
     let val = CHIP_VALUES[i];
     let realVal = val === "ALL" ? chips : val;
-    let active =
-      (val === "ALL" ? allSelected : !allSelected && currentBet === realVal) ||
-      (state !== "BET" &&
-        (val === "ALL" ? allSelected : !allSelected && lastBet === realVal));
+    let active = (val === "ALL" ? allSelected : !allSelected && currentBet === realVal) ||
+      (state !== "BET" && (val === "ALL" ? allSelected : !allSelected && lastBet === realVal));
     let disabled = state !== "BET" && !active;
-    chipBtns.push({
-      x: bx,
-      y: by,
-      w: bw,
-      h: bh,
-      realVal,
-      isAll: val === "ALL",
-    });
+    chipBtns.push({ x: bx, y: by, w: bw, h: bh, realVal, isAll: val === "ALL" });
     drawChipBtn(bx, by, bw, bh, String(val), active, disabled);
     bx += bw + gap;
   }
@@ -577,75 +374,30 @@ function drawBetSection() {
 
 function drawChipBtn(x, y, w, h, label, active, disabled) {
   if (disabled) {
-    // dim state
-    fill(color(120, 12, 12));
-    noStroke();
-    rect(x, y, w, h, 2);
-    fill(color(160, 60, 60));
-    noStroke();
-    rect(x, y, w, h - 4, 2);
+    fill(color(120, 12, 12)); noStroke(); rect(x, y, w, h, 2);
+    fill(color(160, 60, 60)); noStroke(); rect(x, y, w, h - 4, 2);
   } else {
-    // gold outer border
-    fill(active ? col("amber") : col("bord"));
-    noStroke();
-    rect(x - 2, y - 2, w + 4, h + 4, 4);
-    // red fill (bottom shadow layer)
-    fill(active ? color(160, 100, 0) : color(120, 12, 12));
-    noStroke();
-    rect(x, y + 3, w, h - 1, 2);
-    // red fill (main)
-    fill(active ? color(200, 140, 0) : col("red"));
-    noStroke();
-    rect(x, y, w, h - 3, 2);
+    fill(active ? col("amber") : col("bord")); noStroke(); rect(x - 2, y - 2, w + 4, h + 4, 4);
+    fill(active ? color(160, 100, 0) : color(120, 12, 12)); noStroke(); rect(x, y + 3, w, h - 1, 2);
+    fill(active ? color(200, 140, 0) : col("red")); noStroke(); rect(x, y, w, h - 3, 2);
   }
-
   fill(disabled ? color(160, 60, 60) : col("white"));
-  setFont(13, "ui");
-  textAlign(CENTER, CENTER);
+  setFont(13, "ui"); textAlign(CENTER, CENTER);
   if (disabled) text(label, x + w / 2, y + h / 2 - 1);
   else outlineText(label, x + w / 2, y + h / 2 - 1);
 }
 
 function drawAnswerBtn(x, y, w, h, val, btnState, hovered, alpha) {
   if (alpha === undefined) alpha = 255;
-  let a = alpha / 255;
-
   let fillTop, fillBot, borderC;
-  if (btnState === "correct") {
-    borderC = col("amber", alpha);
-    fillTop = color(30, 160, 60, alpha);
-    fillBot = color(15, 100, 40, alpha);
-  } else if (btnState === "wrong") {
-    borderC = col("amber", alpha);
-    fillTop = color(176, 24, 24, alpha);
-    fillBot = color(100, 10, 10, alpha);
-  } else if (hovered) {
-    borderC = col("amber", alpha);
-    fillTop = color(210, 45, 45, alpha);
-    fillBot = color(130, 20, 20, alpha);
-  } else {
-    borderC = col("bord", alpha);
-    fillTop = color(176, 24, 24, alpha);
-    fillBot = color(110, 10, 10, alpha);
-  }
-
-  // border
-  fill(borderC);
-  noStroke();
-  rect(x - 2, y - 2, w + 4, h + 4, 4);
-  // shadow bottom
-  fill(fillBot);
-  noStroke();
-  rect(x, y + 3, w, h - 1, 2);
-  // main fill
-  fill(fillTop);
-  noStroke();
-  rect(x, y, w, h - 3, 2);
-
-  // number
-  fill(col("white", alpha));
-  setFont(28, "display");
-  textAlign(CENTER, CENTER);
+  if (btnState === "correct") { borderC = col("amber", alpha); fillTop = color(30, 160, 60, alpha); fillBot = color(15, 100, 40, alpha); }
+  else if (btnState === "wrong") { borderC = col("amber", alpha); fillTop = color(176, 24, 24, alpha); fillBot = color(100, 10, 10, alpha); }
+  else if (hovered) { borderC = col("amber", alpha); fillTop = color(210, 45, 45, alpha); fillBot = color(130, 20, 20, alpha); }
+  else { borderC = col("bord", alpha); fillTop = color(176, 24, 24, alpha); fillBot = color(110, 10, 10, alpha); }
+  fill(borderC); noStroke(); rect(x - 2, y - 2, w + 4, h + 4, 4);
+  fill(fillBot); noStroke(); rect(x, y + 3, w, h - 1, 2);
+  fill(fillTop); noStroke(); rect(x, y, w, h - 3, 2);
+  fill(col("white", alpha)); setFont(28, "display"); textAlign(CENTER, CENTER);
   outlineText(val, x + w / 2, y + h / 2 - 1);
 }
 
@@ -653,51 +405,26 @@ function drawAnswerBtn(x, y, w, h, val, btnState, hovered, alpha) {
 //  LOG
 // ═════════════════════════════════════════════════════════════════════════════
 function drawLog() {
-  let tints = {
-    muted: "muted",
-    good: "green",
-    bad: "red",
-    info: "cyan",
-    special: "purple",
-  };
-  let key = tints[logType] || "muted";
-  fill(col(key));
-  setFont(11, "ui");
-  textAlign(CENTER, CENTER);
+  let tints = { muted: "muted", good: "green", bad: "red", info: "cyan", special: "purple" };
+  fill(col(tints[logType] || "muted")); setFont(11, "ui"); textAlign(CENTER, CENTER);
   text(logMsg, CW / 2, Y_LOG + H_LOG / 2);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  REVEAL / START button — casino red with gold border
+//  REVEAL BUTTON
 // ═════════════════════════════════════════════════════════════════════════════
 function drawRevealBtn() {
-  let x = PAD,
-    w = CW - PAD * 2,
-    h = H_REVEAL;
+  let x = PAD, w = CW - PAD * 2, h = H_REVEAL;
   let disabled = state !== "BET" || currentBet === 0;
-
   if (!disabled) {
-    // gold border
-    fill(col("amber"));
-    noStroke();
-    rect(x - 3, Y_REVEAL - 3, w + 6, h + 6, 4);
-    // bottom shadow
-    fill(color(120, 12, 12));
-    noStroke();
-    rect(x, Y_REVEAL + 4, w, h, 2);
-    // main fill
-    fill(revealHover ? col("redHi") : col("red"));
-    noStroke();
-    rect(x, Y_REVEAL, w, h - 4, 2);
+    fill(col("amber")); noStroke(); rect(x - 3, Y_REVEAL - 3, w + 6, h + 6, 4);
+    fill(color(120, 12, 12)); noStroke(); rect(x, Y_REVEAL + 4, w, h, 2);
+    fill(revealHover ? col("redHi") : col("red")); noStroke(); rect(x, Y_REVEAL, w, h - 4, 2);
   } else {
-    fill(color(60, 10, 10));
-    noStroke();
-    rect(x, Y_REVEAL, w, h, 2);
+    fill(color(60, 10, 10)); noStroke(); rect(x, Y_REVEAL, w, h, 2);
   }
-
   fill(disabled ? color(120, 40, 40) : col("white"));
-  setFont(24, "display");
-  textAlign(CENTER, CENTER);
+  setFont(24, "display"); textAlign(CENTER, CENTER);
   if (disabled) text("REVEAL", x + w / 2, Y_REVEAL + h / 2 - 1);
   else outlineText("REVEAL", x + w / 2, Y_REVEAL + h / 2 - 1);
   revealBtn = { x, y: Y_REVEAL, w, h, disabled };
@@ -708,251 +435,190 @@ function drawRevealBtn() {
 // ═════════════════════════════════════════════════════════════════════════════
 function drawActTransition() {
   background(col("bg"));
-
   let fadeIn = constrain(map(transitionTimer, 3000, 2400, 0, 255), 0, 255);
   let elapsed = 1 - transitionTimer / 3000;
-
   textAlign(CENTER, CENTER);
-
-  // purple shadow offset
-  fill(col("shadow", fadeIn));
-  setFont(90, "display");
+  fill(col("shadow", fadeIn)); setFont(90, "display");
   text("ACT  II", CW / 2 + 5, CH / 2 - 55);
-
-  setShadow("rgba(210,35,45,0.5)", 30);
-  fill(col("red", fadeIn));
-  setFont(90, "display");
-  text("ACT  II", CW / 2, CH / 2 - 60);
-  clearShadow();
-
-  fill(col("amber", fadeIn));
-  setFont(28, "display");
+  setShadow("rgba(210,35,45,0.5)", 30); fill(col("red", fadeIn)); setFont(90, "display");
+  text("ACT  II", CW / 2, CH / 2 - 60); clearShadow();
+  fill(col("amber", fadeIn)); setFont(28, "display");
   text("S U M   B L I T Z", CW / 2, CH / 2 + 14);
-
-  fill(col("muted", fadeIn));
-  setFont(12, "ui");
-  text(
-    "Numbers scatter across the screen.\nYour job: guess their sum.\nOnly the exact answer wins.",
-    CW / 2,
-    CH / 2 + 72,
-  );
-
+  fill(col("muted", fadeIn)); setFont(12, "ui");
+  text("Numbers scatter across the screen.\nYour job: guess their sum.\nOnly the exact answer wins.", CW / 2, CH / 2 + 72);
   let bw = 300;
-  fill(color(40, 30, 10));
-  noStroke();
-  rect(CW / 2 - bw / 2, CH - 76, bw, 8, 4);
-  setShadow("rgba(220,155,10,0.8)", 8);
-  fill(col("amber"));
-  noStroke();
-  rect(CW / 2 - bw / 2, CH - 76, bw * elapsed, 8, 4);
-  clearShadow();
+  fill(color(40, 30, 10)); noStroke(); rect(CW / 2 - bw / 2, CH - 76, bw, 8, 4);
+  setShadow("rgba(220,155,10,0.8)", 8); fill(col("amber")); noStroke();
+  rect(CW / 2 - bw / 2, CH - 76, bw * elapsed, 8, 4); clearShadow();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  SPLASH SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
 function drawSplash() {
-  // Logo image
   if (logoImg) {
     let imgW = CW - PAD * 2;
     let imgH = imgW * (logoImg.height / logoImg.width);
     image(logoImg, PAD, Y_HEADER, imgW, imgH);
   }
-
-  setFont(12, "ui");
-  fill(col("muted"));
-  textAlign(CENTER, TOP);
+  setFont(12, "ui"); fill(col("muted")); textAlign(CENTER, TOP);
   text("A game about numbers you can't trust", CW / 2, Y_HEADER + 86);
 
-  // How-to-play card
-  let cx = PAD,
-    cw = CW - PAD * 2,
-    cy = Y_STATS,
-    ch = CH - Y_STATS - PAD - 72;
+  // ── How-to-play card (smaller to make room for difficulty selector) ──────
+  let cx = PAD, cw = CW - PAD * 2, cy = Y_STATS;
+  let diffSectionH = 90;
+  let ch = CH - Y_STATS - PAD - 72 - GAP - diffSectionH;
   drawCard(cx, cy, cw, ch);
 
-  let tx = CW / 2,
-    ty = cy + 20;
-  setFont(20, "display");
-  fill(col("amber"));
-  textAlign(CENTER, TOP);
+  let tx = CW / 2, ty = cy + 16;
+  setFont(18, "display"); fill(col("amber")); textAlign(CENTER, TOP);
   text("HOW TO PLAY", tx, ty);
 
-  setFont(11, "ui");
-  fill(col("muted"));
-  textAlign(LEFT, TOP);
-  let lx = cx + 20,
-    lw = cw - 40;
+  setFont(11, "ui"); fill(col("muted")); textAlign(LEFT, TOP);
+  let lx = cx + 20, lw = cw - 40;
   let lines = [
     { label: "ACT I  —  TUTORIAL  (4 rounds)", color: "cyan" },
-    {
-      text: "A number flashes somewhere on screen. It will always be mirrored, flipped, or both. Bet chips, then pick the real number from four choices.",
-    },
+    { text: "A number flashes on screen — mirrored, flipped, or both. Pick the real number." },
     { spacer: true },
     { label: "ACT II —  SUM BLITZ  (6 rounds)", color: "purple" },
-    {
-      text: "Multiple numbers appear scattered across the screen. Add them up in your head, then pick the correct sum. Some numbers may be flipped.",
-    },
+    { text: "Multiple numbers scatter across the screen. Add them up. Pick the correct sum." },
     { spacer: true },
     { label: "SCORING", color: "amber" },
-    { text: "Correct: win your bet × the round multiplier." },
-    { text: "Wrong or timeout: lose your bet. Chips CAN go negative." },
-    { spacer: true },
-    { label: "GOAL", color: "green" },
-    {
-      text: "Survive all 10 rounds and finish with as many chips as possible. You start with 50.",
-    },
+    { text: "Correct: win bet × multiplier.  Wrong or timeout: lose your bet." },
+    { text: "Run out of chips and it's game over." },
   ];
 
-  let lineY = ty + 36,
-    lineH = 15;
+  let lineY = ty + 32, lineH = 14;
   for (let l of lines) {
-    if (l.spacer) {
-      lineY += 6;
-      continue;
-    }
+    if (l.spacer) { lineY += 5; continue; }
     if (l.label) {
-      let lc = C[l.color] || C.cyan;
-      fill(col(l.color));
-      setFont(13, "display");
-      textAlign(LEFT, TOP);
-      text(l.label, lx, lineY);
-      lineY += 17;
+      fill(col(l.color)); setFont(12, "display"); textAlign(LEFT, TOP);
+      text(l.label, lx, lineY); lineY += 16;
     } else {
-      fill(col("text"));
-      setFont(11, "ui");
-      textAlign(LEFT, TOP);
-      let words = l.text.split(" ");
-      let line = "";
+      fill(col("text")); setFont(11, "ui"); textAlign(LEFT, TOP);
+      let words = l.text.split(" "), line = "";
       for (let ww of words) {
         let test = line + (line ? " " : "") + ww;
-        if (textWidth(test) > lw - 10) {
-          text(line, lx + 8, lineY);
-          lineY += lineH;
-          line = ww;
-        } else line = test;
+        if (textWidth(test) > lw - 10) { text(line, lx + 8, lineY); lineY += lineH; line = ww; }
+        else line = test;
       }
-      if (line) {
-        text(line, lx + 8, lineY);
-        lineY += lineH;
-      }
+      if (line) { text(line, lx + 8, lineY); lineY += lineH; }
     }
   }
 
-  // START button
-  let bw = 240,
-    bh = H_REVEAL;
-  let bx = CW / 2 - bw / 2,
-    by = CH - PAD - bh;
+  // ── Difficulty selector ───────────────────────────────────────────────────
+  let dy = cy + ch + GAP;
+  drawCard(cx, dy, cw, diffSectionH);
+
+  setFont(14, "display"); fill(col("amber")); textAlign(CENTER, TOP);
+  outlineText("DIFFICULTY", CW / 2, dy + 10);
+
+  // desc text
+  let ds = DIFF_SETTINGS[difficulty];
+  setFont(10, "ui"); fill(col(ds.color)); textAlign(CENTER, TOP);
+  text(ds.desc, CW / 2, dy + 30);
+
+  // three buttons
+  diffBtns = [];
+  let bw3 = (cw - 32 - GAP * 2) / 3;
+  let bx3 = cx + 16, by3 = dy + 46, bh3 = 28;
+
+  for (let i = 0; i < 3; i++) {
+    let d = DIFF_SETTINGS[i];
+    let active = difficulty === i;
+    let hov = mouseY >= by3 && mouseY <= by3 + bh3 && mouseX >= bx3 && mouseX <= bx3 + bw3;
+
+    // border
+    fill(active ? col(d.color) : col("bord")); noStroke();
+    rect(bx3 - 2, by3 - 2, bw3 + 4, bh3 + 4, 4);
+    // shadow
+    fill(active ? color(80, 60, 0) : color(80, 10, 10)); noStroke();
+    rect(bx3, by3 + 3, bw3, bh3 - 1, 2);
+    // main
+    let mainFill;
+    if (active) {
+      if (i === 0) mainFill = color(12, 139, 33);
+      else if (i === 1) mainFill = color(200, 140, 0);
+      else mainFill = color(176, 24, 24);
+    } else {
+      mainFill = hov ? color(60, 20, 20) : color(30, 10, 10);
+    }
+    fill(mainFill); noStroke(); rect(bx3, by3, bw3, bh3 - 3, 2);
+
+    // label
+    fill(active ? col("white") : col("muted")); setFont(13, "display"); textAlign(CENTER, CENTER);
+    if (active) outlineText(d.label, bx3 + bw3 / 2, by3 + bh3 / 2 - 1);
+    else text(d.label, bx3 + bw3 / 2, by3 + bh3 / 2 - 1);
+
+    diffBtns.push({ x: bx3, y: by3, w: bw3, h: bh3, index: i });
+    bx3 += bw3 + GAP;
+  }
+
+  // ── START button ─────────────────────────────────────────────────────────
+  let sbw = 240, sbh = H_REVEAL;
+  let sbx = CW / 2 - sbw / 2, sby = CH - PAD - sbh;
   let hov = startBtn ? inBtn(mouseX, mouseY, startBtn) : false;
-
-  fill(col("amber"));
-  noStroke();
-  rect(bx - 3, by - 3, bw + 6, bh + 6, 4);
-  fill(color(120, 12, 12));
-  noStroke();
-  rect(bx, by + 4, bw, bh, 2);
-  fill(hov ? col("redHi") : col("red"));
-  noStroke();
-  rect(bx, by, bw, bh - 4, 2);
-
-  fill(col("white"));
-  setFont(24, "display");
-  textAlign(CENTER, CENTER);
-  outlineText("START GAME", CW / 2, by + bh / 2 - 1);
-
-  startBtn = { x: bx, y: by, w: bw, h: bh };
+  fill(col("amber")); noStroke(); rect(sbx - 3, sby - 3, sbw + 6, sbh + 6, 4);
+  fill(color(120, 12, 12)); noStroke(); rect(sbx, sby + 4, sbw, sbh, 2);
+  fill(hov ? col("redHi") : col("red")); noStroke(); rect(sbx, sby, sbw, sbh - 4, 2);
+  fill(col("white")); setFont(24, "display"); textAlign(CENTER, CENTER);
+  outlineText("START GAME", CW / 2, sby + sbh / 2 - 1);
+  startBtn = { x: sbx, y: sby, w: sbw, h: sbh };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  GAME OVER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawGameOver() {
-  let chipColor =
-    finalChips >= 100 ? "green" : finalChips >= 0 ? "amber" : "red";
-  let cardW = CW - PAD * 2,
-    cardH = 290;
-  let cardX = PAD,
-    cardY = CH / 2 - cardH / 2 - 20;
+  let chipColor = finalChips >= 100 ? "green" : finalChips >= 50 ? "amber" : "red";
+  let cardW = CW - PAD * 2, cardH = 290;
+  let cardX = PAD, cardY = CH / 2 - cardH / 2 - 20;
   drawCard(cardX, cardY, cardW, cardH);
-
   textAlign(CENTER, CENTER);
-  let midX = CW / 2,
-    midY = cardY + cardH / 2;
-
-  fill(col("shadow"));
-  setFont(80, "display");
+  let midX = CW / 2, midY = cardY + cardH / 2;
+  fill(col("shadow")); setFont(80, "display");
   text("GAME OVER!", midX + 4, midY - 58);
-  setShadow("rgba(210,35,45,0.5)", 20);
-  fill(col("red"));
-  text("GAME OVER!", midX, midY - 62);
-  clearShadow();
+  setShadow("rgba(210,35,45,0.5)", 20); fill(col("red"));
+  text("GAME OVER!", midX, midY - 62); clearShadow();
+  stroke(col("bord")); strokeWeight(2);
+  line(cardX + 30, midY - 8, cardX + cardW - 30, midY - 8); noStroke();
+  setFont(13, "ui"); fill(col("muted")); text("FINAL CHIPS", midX, midY + 20);
+  fill(col(chipColor)); setFont(64, "display"); text(finalChips, midX, midY + 65);
 
-  stroke(col("bord"));
-  strokeWeight(2);
-  line(cardX + 30, midY - 8, cardX + cardW - 30, midY - 8);
-  noStroke();
-
-  setFont(13, "ui");
-  fill(col("muted"));
-  text("FINAL CHIPS", midX, midY + 20);
-
-  fill(col(chipColor));
-  setFont(64, "display");
-  text(finalChips, midX, midY + 65);
-
-  // Play Again button
-  let bw = 220,
-    bh = H_REVEAL;
-  let bx = CW / 2 - bw / 2,
-    by = cardY + cardH + GAP * 2;
+  let bw = 220, bh = H_REVEAL;
+  let bx = CW / 2 - bw / 2, by = cardY + cardH + GAP * 2;
   let hov = playAgainBtn ? inBtn(mouseX, mouseY, playAgainBtn) : false;
-
-  fill(col("amber"));
-  noStroke();
-  rect(bx - 3, by - 3, bw + 6, bh + 6, 4);
-  fill(color(120, 12, 12));
-  noStroke();
-  rect(bx, by + 4, bw, bh, 2);
-  fill(hov ? col("redHi") : col("red"));
-  noStroke();
-  rect(bx, by, bw, bh - 4, 2);
-
-  fill(col("white"));
-  setFont(24, "display");
-  textAlign(CENTER, CENTER);
+  fill(col("amber")); noStroke(); rect(bx - 3, by - 3, bw + 6, bh + 6, 4);
+  fill(color(120, 12, 12)); noStroke(); rect(bx, by + 4, bw, bh, 2);
+  fill(hov ? col("redHi") : col("red")); noStroke(); rect(bx, by, bw, bh - 4, 2);
+  fill(col("white")); setFont(24, "display"); textAlign(CENTER, CENTER);
   outlineText("PLAY AGAIN", CW / 2, by + bh / 2 - 1);
-
   playAgainBtn = { x: bx, y: by, w: bw, h: bh };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  INPUT
 // ═════════════════════════════════════════════════════════════════════════════
-function mouseMoved() {
-  updateHover();
-}
-function mouseDragged() {
-  updateHover();
-}
+function mouseMoved() { updateHover(); }
+function mouseDragged() { updateHover(); }
 
 function updateHover() {
-  if (state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION")
-    return;
+  if (state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION") return;
   revealHover = revealBtn ? inBtn(mouseX, mouseY, revealBtn) : false;
   answerHover = -1;
   if (state === "ANSWER") {
     for (let i = 0; i < answerBtns.length; i++) {
-      if (answerBtns[i] && inBtn(mouseX, mouseY, answerBtns[i])) {
-        answerHover = i;
-        break;
-      }
+      if (answerBtns[i] && inBtn(mouseX, mouseY, answerBtns[i])) { answerHover = i; break; }
     }
   }
 }
 
 function mousePressed() {
   if (state === "SPLASH") {
+    // Check difficulty buttons first
+    for (let b of diffBtns) {
+      if (inBtn(mouseX, mouseY, b)) { difficulty = b.index; return; }
+    }
     if (startBtn && inBtn(mouseX, mouseY, startBtn)) fullReset();
     return;
   }
@@ -962,31 +628,19 @@ function mousePressed() {
   }
   if (state === "ACT_TRANSITION") return;
   updateHover();
-  if (revealBtn && !revealBtn.disabled && inBtn(mouseX, mouseY, revealBtn)) {
-    startFlash();
-    return;
-  }
+  if (revealBtn && !revealBtn.disabled && inBtn(mouseX, mouseY, revealBtn)) { startFlash(); return; }
   if (state === "BET") {
     for (let b of chipBtns) {
       if (inBtn(mouseX, mouseY, b)) {
-        if (b.isAll) {
-          currentBet = Math.abs(chips);
-          allSelected = true;
-        } else {
-          currentBet = b.realVal;
-          allSelected = false;
-        }
-        setLog("Hit REVEAL when ready.", "muted");
-        return;
+        if (b.isAll) { currentBet = Math.abs(chips); allSelected = true; }
+        else { currentBet = b.realVal; allSelected = false; }
+        setLog("Hit REVEAL when ready.", "muted"); return;
       }
     }
   }
   if (state === "ANSWER") {
     for (let b of answerBtns) {
-      if (inBtn(mouseX, mouseY, b)) {
-        handleAnswer(b.val);
-        return;
-      }
+      if (inBtn(mouseX, mouseY, b)) { handleAnswer(b.val); return; }
     }
   }
 }
@@ -996,21 +650,14 @@ function inBtn(mx, my, b) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GAME LOGIC  (unchanged from original)
+//  GAME LOGIC
 // ═════════════════════════════════════════════════════════════════════════════
 function fullReset() {
-  chips = 50;
-  streak = 0;
-  act = 1;
-  actRound = 1;
-  finalChips = 0;
-  startBtn = null;
-  playAgainBtn = null;
-  logMsg = "Select a wager, then hit REVEAL.";
-  logType = "muted";
+  chips = 50; streak = 0; act = 1; actRound = 1; finalChips = 0;
+  startBtn = null; playAgainBtn = null;
+  logMsg = "Select a wager, then hit REVEAL."; logType = "muted";
   CHIP_VALUES = [5, 10, 25, 50, "ALL"];
-  resetRound();
-  state = "BET";
+  resetRound(); state = "BET";
 }
 
 function startFlash() {
@@ -1018,24 +665,16 @@ function startFlash() {
   lastBet = Math.abs(currentBet);
   chips -= lastBet;
   let diff = getDiff();
-
   if (act === 1) {
     flipType = floor(random(1, 4));
     isMirrored = flipType === 1 || flipType === 3;
-    let margin = 70,
-      aw = CW - PAD * 2;
-    act1Pos = {
-      x: PAD + random(margin, aw - margin),
-      y: Y_ARENA + random(margin, H_ARENA - margin),
-    };
-    let maxN = actRound <= 2 ? 9 : 99;
-    let minN = actRound <= 2 ? 1 : 10;
+    let margin = 70, aw = CW - PAD * 2;
+    act1Pos = { x: PAD + random(margin, aw - margin), y: Y_ARENA + random(margin, H_ARENA - margin) };
+    let maxN = actRound <= 2 ? 9 : 99, minN = actRound <= 2 ? 1 : 10;
     correctAnswer = floor(random(minN, maxN + 1));
     choices = generateChoicesAct1(correctAnswer, isMirrored);
   } else {
-    isMirrored = false;
-    sumNumbers = [];
-    numFlips = [];
+    isMirrored = false; sumNumbers = []; numFlips = [];
     let diff2 = getA2Diff();
     let maxEach = actRound <= 2 ? 9 : actRound <= 4 ? 15 : 20;
     for (let i = 0; i < diff2.count; i++) {
@@ -1046,41 +685,26 @@ function startFlash() {
     choices = generateChoicesAct2(correctAnswer);
     numPositions = generatePositions(diff2.count, diff2.scatter);
   }
-
-  flashDuration = diff.ms;
-  flashTimer = diff.ms;
-  glitching = false;
-  selectedAnswer = -1;
-  state = "FLASH";
+  flashDuration = diff.ms; flashTimer = diff.ms;
+  glitching = false; selectedAnswer = -1; state = "FLASH";
   if (act === 1) {
     if (flipType === 3) setLog("MIRRORED + FLIPPED — trust nothing.", "bad");
     else if (flipType === 2) setLog("UPSIDE DOWN — stay sharp.", "bad");
     else setLog("MIRRORED — trust nothing.", "bad");
-  } else {
-    setLog("Watch the numbers!", "info");
-  }
+  } else setLog("Watch the numbers!", "info");
 }
 
 function generatePositions(count, scatter) {
-  let aw = CW - PAD * 2,
-    positions = [];
+  let aw = CW - PAD * 2, positions = [];
   if (!scatter) {
     let spacing = aw / (count + 1);
-    for (let i = 0; i < count; i++)
-      positions.push({ x: spacing * (i + 1), y: H_ARENA / 2 });
+    for (let i = 0; i < count; i++) positions.push({ x: spacing * (i + 1), y: H_ARENA / 2 });
   } else {
-    let margin = 60,
-      tries = 0;
+    let margin = 60, tries = 0;
     while (positions.length < count && tries++ < 300) {
-      let px = random(margin, aw - margin),
-        py = random(margin, H_ARENA - margin);
+      let px = random(margin, aw - margin), py = random(margin, H_ARENA - margin);
       let ok = true;
-      for (let p of positions) {
-        if (dist(px, py, p.x, p.y) < 90) {
-          ok = false;
-          break;
-        }
-      }
+      for (let p of positions) { if (dist(px, py, p.x, p.y) < 90) { ok = false; break; } }
       if (ok) positions.push({ x: px, y: py });
     }
   }
@@ -1088,21 +712,17 @@ function generatePositions(count, scatter) {
 }
 
 function endFlash() {
-  state = "ANSWER";
-  glitching = false;
-  answerTimer = ANSWER_TIME;
+  state = "ANSWER"; glitching = false; answerTimer = ANSWER_TIME;
   setLog(act === 1 ? "Pick your answer!" : "What was the sum?", "info");
 }
 
 function handleAnswer(val) {
   selectedAnswer = val;
-  let diff = getDiff(),
-    bet = lastBet;
+  let diff = getDiff(), bet = lastBet;
   if (act === 1) {
     if (val === correctAnswer) {
       let profit = floor(bet * diff.mult);
-      chips += bet + profit;
-      streak++;
+      chips += bet + profit; streak++;
       setLog("+" + profit + " chips! Correct!  (×" + diff.mult + ")", "good");
     } else {
       streak = 0;
@@ -1111,84 +731,47 @@ function handleAnswer(val) {
   } else {
     if (Math.abs(val - correctAnswer) === 0) {
       let profit = floor(bet * diff.mult);
-      chips += bet + profit;
-      streak++;
+      chips += bet + profit; streak++;
       setLog("+" + profit + " chips!  EXACT!  (×" + diff.mult + ")", "good");
     } else {
       streak = 0;
       setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
     }
   }
-  if (chips <= 0) {
-    chips = 0;
-    finalChips = 0;
-    setLog("BUST! You're out of chips.", "bad");
-  }
-  state = "RESULT";
-  resultTimer = 2000;
+  if (chips <= 0) { chips = 0; finalChips = 0; setLog("BUST! You're out of chips.", "bad"); }
+  state = "RESULT"; resultTimer = 2000;
 }
 
 function handleTimeout() {
-  selectedAnswer = -1;
-  streak = 0;
-  setLog(
-    "TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".",
-    "bad",
-  );
-  if (chips <= 0) {
-    chips = 0;
-    finalChips = 0;
-    setLog("TIME'S UP! BUST — you're out of chips.", "bad");
-  }
-  state = "RESULT";
-  resultTimer = 2000;
+  selectedAnswer = -1; streak = 0;
+  setLog("TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".", "bad");
+  if (chips <= 0) { chips = 0; finalChips = 0; setLog("TIME'S UP! BUST — you're out of chips.", "bad"); }
+  state = "RESULT"; resultTimer = 2000;
 }
 
 function nextRound() {
-  if (chips <= 0) {
-    finalChips = 0;
-    state = "GAME_OVER";
-    return;
-  }
+  if (chips <= 0) { finalChips = 0; state = "GAME_OVER"; return; }
   let maxRounds = act === 1 ? 4 : 6;
   if (actRound >= maxRounds) {
-    if (act === 1) {
-      state = "ACT_TRANSITION";
-      transitionTimer = 3000;
-      return;
-    } else {
-      finalChips = chips;
-      state = "GAME_OVER";
-      return;
-    }
+    if (act === 1) { state = "ACT_TRANSITION"; transitionTimer = 3000; return; }
+    else { finalChips = chips; state = "GAME_OVER"; return; }
   }
-  actRound++;
-  setLog("Select a wager to begin.", "muted");
-  resetRound();
+  actRound++; setLog("Select a wager to begin.", "muted"); resetRound();
 }
 
 function beginAct2() {
-  act = 2;
-  actRound = 1;
-  setLog("ACT II — Guess the sum of the numbers!", "special");
-  resetRound();
+  act = 2; actRound = 1;
+  setLog("ACT II — Guess the sum of the numbers!", "special"); resetRound();
 }
 
 function resetRound() {
-  updateChipValues();
-  currentBet = 0;
-  lastBet = 0;
-  choices = [];
-  selectedAnswer = -1;
-  sumNumbers = [];
-  numPositions = [];
-  numFlips = [];
-  flipType = 0;
-  allSelected = false;
-  state = "BET";
+  updateChipValues(); currentBet = 0; lastBet = 0; choices = [];
+  selectedAnswer = -1; sumNumbers = []; numPositions = []; numFlips = [];
+  flipType = 0; allSelected = false; state = "BET";
 }
 
 function generateChoicesAct1(correct, mirrored) {
+  let spread = DIFF_SETTINGS[difficulty].choiceSpread;
   let set = new Set([correct]);
   if (mirrored) {
     let m = correct < 10 ? mirrorDigit(correct) : reverseNum(correct);
@@ -1196,9 +779,8 @@ function generateChoicesAct1(correct, mirrored) {
   }
   let tries = 0;
   while (set.size < 4 && tries++ < 80) {
-    let d,
-      r = random();
-    if (r < 0.4) d = correct + (random() > 0.5 ? 1 : -1) * floor(random(1, 6));
+    let d, r = random();
+    if (r < 0.4) d = correct + (random() > 0.5 ? 1 : -1) * floor(random(1, spread + 1));
     else if (r < 0.7) d = reverseNum(correct);
     else d = floor(random(1, 100));
     if (d > 0 && d <= 99 && d !== correct) set.add(d);
@@ -1207,10 +789,11 @@ function generateChoicesAct1(correct, mirrored) {
 }
 
 function generateChoicesAct2(correct) {
+  let spread = DIFF_SETTINGS[difficulty].choiceSpread;
   let set = new Set([correct]);
   let tries = 0;
   while (set.size < 4 && tries++ < 100) {
-    let delta = floor(random(1, 11));
+    let delta = floor(random(1, spread + 1));
     let d = correct + (random() > 0.5 ? 1 : -1) * delta;
     if (d > 0 && d <= 200) set.add(d);
   }
@@ -1227,7 +810,4 @@ function reverseNum(n) {
   return !rev || rev <= 0 ? n + 1 : rev;
 }
 
-function setLog(msg, type) {
-  logMsg = msg;
-  logType = type || "muted";
-}
+function setLog(msg, type) { logMsg = msg; logType = type || "muted"; }
