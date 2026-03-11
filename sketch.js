@@ -117,6 +117,28 @@ let revealHover = false, revealFill = 0;
 let answerHover = -1;
 let allSelected = false, lastBet = 0, wagerPulse = 0;
 
+// ── Risk / Double-Down ────────────────────────────────────────────────────────
+// riskMult: bonus multiplier earned by betting a large % of stack (1.0 = no bonus)
+let riskMult      = 1.0;
+let chipsBeforeBet = 0;   // chips BEFORE current bet was placed
+let doubledDown   = false;   // has the player doubled this round?
+let ddBtn         = null;    // double-down button rect (valid during ANSWER only)
+let ddHover       = false;
+
+// Compute risk tier from bet fraction (0-1)
+// Returns { label, color, bonusMult }
+function getRiskTier(fraction) {
+  if      (fraction >= 0.99) return { label:"ALL  IN",   color:"purple", bonusMult: 1.0  };
+  else if (fraction >= 0.60) return { label:"RECKLESS",  color:"red",    bonusMult: 0.75 };
+  else if (fraction >= 0.35) return { label:"BOLD",      color:"amber",  bonusMult: 0.45 };
+  else if (fraction >= 0.15) return { label:"CALCULATED",color:"cyan",   bonusMult: 0.20 };
+  else                       return { label:"SAFE",      color:"green",  bonusMult: 0.0  };
+}
+// Final effective multiplier = baseMult * (1 + riskBonus)
+function effectiveMult(baseMult) {
+  return parseFloat((baseMult * (1 + riskMult - 1)).toFixed(2));
+}
+
 // ── Difficulty helpers ────────────────────────────────────────────────────────
 function getA1Diff() {
   const s = DIFF_SETTINGS[difficulty].timeScale;
@@ -469,10 +491,14 @@ function drawArena() {
   text(diff.label, ax+aw-12, Y_ARENA+H_ARENA-10);
 
   if (state === "BET") {
-    fill(col("muted")); setFont(12,"ui"); textAlign(CENTER,CENTER);
-    text(act===1 ? "Place your bet,\nthen reveal the number."
-                 : "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM.",
-      ax+aw/2, Y_ARENA+H_ARENA/2);
+    // Instruction text (upper portion)
+    fill(col("muted")); setFont(11,"ui"); textAlign(CENTER,TOP);
+    text(act===1 ? "Place your bet, then reveal the number."
+                 : "Place your bet, then watch the numbers flash.\nSome may be mirrored or flipped — guess their SUM.",
+      ax+aw/2, Y_ARENA+18);
+
+    // Risk meter (lower portion)
+    drawRiskMeter(ax, aw);
   }
 
   if (state === "ANSWER" || state === "RESULT") {
@@ -499,6 +525,9 @@ function drawArena() {
       fill(urgent ? col("red") : col("amber")); noStroke();
       rect(ax, Y_ARENA+H_ARENA-5, aw*pct, 5);
       clearShadow();
+
+      // DOUBLE DOWN button — top-left of arena, only if not already doubled and can afford
+      drawDoubleDownBtn(ax, aw);
     }
   }
 
@@ -550,17 +579,173 @@ function drawAct2Flash(ax, aw, fadeA) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  RISK METER  — live odds display inside arena during BET phase
+// ═════════════════════════════════════════════════════════════════════════════
+function drawRiskMeter(ax, aw) {
+  let meterY  = Y_ARENA + 70;
+  let meterW  = aw - 60;
+  let meterH  = 14;
+  let meterX  = ax + 30;
+
+  // Background track
+  fill(color(20,15,40)); noStroke(); rect(meterX, meterY, meterW, meterH, 7);
+
+  // Tier zones (colored fills)
+  let zones = [
+    { from:0.00, to:0.15, col:"green"  },
+    { from:0.15, to:0.35, col:"cyan"   },
+    { from:0.35, to:0.60, col:"amber"  },
+    { from:0.60, to:0.99, col:"red"    },
+    { from:0.99, to:1.00, col:"purple" },
+  ];
+  for (let z of zones) {
+    let zx = meterX + z.from * meterW;
+    let zw = (z.to - z.from) * meterW;
+    fill(col(z.col, 60)); noStroke(); rect(zx, meterY, zw, meterH);
+  }
+
+  // Dividers
+  stroke(color(0,0,0,80)); strokeWeight(1);
+  for (let z of zones.slice(0,-1)) {
+    let dx = meterX + z.to * meterW;
+    line(dx, meterY, dx, meterY + meterH);
+  }
+  noStroke();
+
+  // Gold border
+  noFill(); stroke(col("bord",100)); strokeWeight(1);
+  rect(meterX, meterY, meterW, meterH, 7); noStroke();
+
+  // Needle position
+  let frac = chips > 0 ? constrain(currentBet / chips, 0, 1) : 0;
+  let tier = getRiskTier(frac);
+  let nx   = meterX + frac * meterW;
+
+  if (currentBet > 0) {
+    // Glow + needle
+    setShadow(`rgba(220,155,10,0.9)`, 12);
+    fill(col(tier.color)); noStroke();
+    rect(nx - 3, meterY - 4, 6, meterH + 8, 3);
+    clearShadow();
+  }
+
+  // Zone labels below meter
+  let labelData = [
+    { pct:0.075, label:"SAFE"        },
+    { pct:0.25,  label:"CALC."       },
+    { pct:0.475, label:"BOLD"        },
+    { pct:0.795, label:"RECKLESS"    },
+    { pct:0.995, label:"ALL IN"      },
+  ];
+  setFont(8,"display"); textAlign(CENTER,TOP);
+  for (let ld of labelData) {
+    let lx = meterX + ld.pct * meterW;
+    let isActive = currentBet > 0 && getRiskTier(currentBet/chips).label.startsWith(ld.label.split(" ")[0]);
+    fill(isActive ? col(tier.color) : col("muted", 100));
+    text(ld.label, lx, meterY + meterH + 4);
+  }
+
+  // Big centered bonus text when bet is placed
+  if (currentBet > 0) {
+    let baseMult  = getDiff().mult;
+    let bonusMult = getRiskTier(frac).bonusMult;
+    let effMult   = parseFloat((baseMult * (1 + bonusMult)).toFixed(2));
+    let bonusPct  = Math.round(bonusMult * 100);
+
+    let textY = meterY + 40;
+    setFont(11,"ui"); textAlign(CENTER,TOP); fill(col("muted"));
+    text("base ×"+baseMult.toFixed(1)+(bonusPct>0?"  +  risk bonus +"+bonusPct+"%":"  no risk bonus"), CW/2, textY);
+
+    setShadow(`rgba(220,155,10,0.6)`,10);
+    fill(col(tier.color)); setFont(32,"display"); textAlign(CENTER,TOP);
+    text("PAYOUT  ×" + effMult.toFixed(1), CW/2, textY+16);
+    clearShadow();
+
+    // Potential win amount
+    let potWin = floor(currentBet * effMult);
+    setFont(10,"ui"); fill(col("muted")); textAlign(CENTER,TOP);
+    text("WIN: +" + potWin + " chips   LOSE: -" + currentBet + " chips", CW/2, textY+54);
+  } else {
+    setFont(11,"ui"); fill(col("muted",120)); textAlign(CENTER,TOP);
+    text("Place a bet to see your odds", CW/2, meterY+38);
+  }
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DOUBLE DOWN BUTTON  — appears during ANSWER phase
+// ═════════════════════════════════════════════════════════════════════════════
+function drawDoubleDownBtn(ax, aw) {
+  let canDD   = !doubledDown && chipsBeforeBet >= lastBet && lastBet > 0;
+  let bw = 180, bh = 28;
+  let bx = ax + aw/2 - bw/2, by = Y_ARENA + H_ARENA - 38;
+  ddBtn = { x:bx, y:by, w:bw, h:bh };
+  ddHover = inBtn(mouseX, mouseY, ddBtn);
+
+  if (doubledDown) {
+    // Show "DOUBLED!" badge
+    fill(color(20,80,20,180)); noStroke(); rect(bx, by, bw, bh, 3);
+    fill(col("green")); setFont(11,"display"); textAlign(CENTER,CENTER);
+    text("✓  DOUBLED!", bx+bw/2, by+bh/2);
+    return;
+  }
+
+  if (!canDD) {
+    fill(color(40,15,15,150)); noStroke(); rect(bx, by, bw, bh, 3);
+    fill(col("muted",100)); setFont(9,"display"); textAlign(CENTER,CENTER);
+    text("DOUBLE DOWN", bx+bw/2, by+bh/2);
+    return;
+  }
+
+  // Active button
+  if (ddHover) setShadow("rgba(220,155,10,0.6)", 10);
+  fill(col("amber")); noStroke(); rect(bx-2, by-2, bw+4, bh+4, 4);
+  fill(color(80,10,10)); noStroke(); rect(bx, by+2, bw, bh, 2);
+  fill(ddHover ? col("redHi") : col("red")); noStroke(); rect(bx, by, bw, bh-2, 2);
+  clearShadow();
+  fill(col("white")); setFont(11,"display"); textAlign(CENTER,CENTER);
+  outlineText("DOUBLE DOWN  +" + lastBet, bx+bw/2, by+bh/2-1);
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  BET SECTION
 // ═════════════════════════════════════════════════════════════════════════════
 function drawBetSection() {
   let x=PAD, w=CW-PAD*2;
   drawCard(x, Y_BET, w, H_BET);
-  fill(col("white")); setFont(18,"display"); textAlign(CENTER,TOP);
-  outlineText("WAGER!", x+w/2, Y_BET+8);
+
+  // Header: "WAGER!" left, live odds badge right
+  let betForCalc = (state==="BET") ? currentBet : lastBet;
+  let frac       = chips > 0 ? constrain(betForCalc / chips, 0, 1) : 0;
+  if (state==="BET" && currentBet > 0) frac = constrain(currentBet / (chips), 0, 1);
+  let tier       = getRiskTier(frac);
+  let baseMult   = getDiff().mult;
+  let effMult    = (betForCalc > 0)
+    ? parseFloat((baseMult * (1 + getRiskTier(frac).bonusMult)).toFixed(2))
+    : baseMult;
+
+  // Left label
+  fill(col("white")); setFont(16,"display"); textAlign(LEFT,TOP);
+  outlineText("WAGER!", x+16, Y_BET+10);
+
+  // Right: odds badge (only meaningful once a bet is chosen)
+  if (betForCalc > 0 || state !== "BET") {
+    let badgeX = x+w-16, badgeY = Y_BET+6;
+    setFont(10,"ui"); textAlign(RIGHT,TOP);
+    fill(col("muted")); text("PAYOUT MULT", badgeX, badgeY);
+    setShadow(`rgba(220,155,10,0.5)`, 8);
+    fill(col(tier.color)); setFont(18,"display"); textAlign(RIGHT,TOP);
+    text("×" + effMult.toFixed(1), badgeX, badgeY+13);
+    clearShadow();
+    setFont(9,"display"); fill(col(tier.color)); textAlign(RIGHT,TOP);
+    text(tier.label, badgeX, badgeY+35);
+  }
+
   chipBtns=[];
-  let bh=32, gap=8;
+  let bh=30, gap=8;
   let bw=(w-32-gap*(CHIP_VALUES.length-1))/CHIP_VALUES.length;
-  let bx=x+16, by=Y_BET+30;
+  let bx=x+16, by=Y_BET+36;
   for (let i=0; i<CHIP_VALUES.length; i++) {
     let val=CHIP_VALUES[i], realVal=val==="ALL"?chips:val;
     let active=(val==="ALL"?allSelected:!allSelected&&currentBet===realVal)||
@@ -851,6 +1036,7 @@ function updateHover() {
   if(state==="SPLASH"||state==="GAME_OVER"||state==="ACT_TRANSITION"||state==="SHOP") return;
   revealHover = revealBtn ? inBtn(mouseX,mouseY,revealBtn) : false;
   answerHover = -1;
+  ddHover = ddBtn && state==="ANSWER" ? inBtn(mouseX,mouseY,ddBtn) : false;
   if (state==="ANSWER") {
     for (let i=0; i<answerBtns.length; i++) {
       if(answerBtns[i]&&inBtn(mouseX,mouseY,answerBtns[i])){answerHover=i;break;}
@@ -898,6 +1084,14 @@ function mousePressed() {
     }
   }
   if(state==="ANSWER"){
+    // Double Down button
+    if(ddBtn && inBtn(mouseX,mouseY,ddBtn) && !doubledDown && chipsBeforeBet>=lastBet && lastBet>0){
+      chips -= lastBet;   // deduct the extra bet immediately
+      doubledDown = true;
+      triggerPowerupFlash("2×  DOUBLED DOWN!","purple");
+      setLog("DOUBLED DOWN — bet "+lastBet*2+" chips total!","special");
+      return;
+    }
     for(let b of answerBtns){
       if(inBtn(mouseX,mouseY,b)){handleAnswer(b.val);return;}
     }
@@ -912,6 +1106,7 @@ function inBtn(mx,my,b){ return mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h; }
 function fullReset() {
   chips=50; streak=0; act=1; actRound=1; finalChips=0;
   hasStreakShield=false; hasTimeSurge=false; powerupFlash=null;
+  riskMult=1.0; doubledDown=false; ddBtn=null; ddHover=false;
   startBtn=null; playAgainBtn=null; continueBtn=null; shopBtns=[];
   logMsg="Select a wager, then hit REVEAL."; logType="muted";
   CHIP_VALUES=[5,10,25,50,"ALL"];
@@ -921,7 +1116,12 @@ function fullReset() {
 function startFlash() {
   if(currentBet<=0) return;
   lastBet=Math.abs(currentBet);
+  chipsBeforeBet = chips;   // snapshot before deduction
   chips-=lastBet;
+  // Capture risk multiplier at bet time
+  let frac = (chips + lastBet) > 0 ? constrain(lastBet / (chips + lastBet), 0, 1) : 0;
+  riskMult = 1 + getRiskTier(frac).bonusMult;
+  doubledDown = false;
   let diff=getDiff();
 
   // Time Surge: consume & double flash duration
@@ -986,21 +1186,24 @@ function endFlash(){
 
 function handleAnswer(val){
   selectedAnswer=val;
-  let diff=getDiff(), bet=lastBet;
-  let correct = (act===1) ? val===correctAnswer : Math.abs(val-correctAnswer)===0;
+  let diff=getDiff();
+  let totalBet = doubledDown ? lastBet * 2 : lastBet;
+  let effMult  = parseFloat((diff.mult * riskMult).toFixed(2));
+  let correct  = (act===1) ? val===correctAnswer : Math.abs(val-correctAnswer)===0;
 
   if(correct){
-    let profit=floor(bet*diff.mult);
-    chips+=bet+profit; streak++;
-    setLog("+"+profit+" chips! "+(act===1?"Correct":"EXACT")+"!  (×"+diff.mult+")","good");
+    let profit=floor(totalBet * effMult);
+    chips+=totalBet+profit; streak++;
+    let tag = (riskMult>1?"  🔥×"+effMult.toFixed(1):"  ×"+effMult.toFixed(1)) + (doubledDown?" 2×BET":"");
+    setLog("+"+profit+" chips! "+(act===1?"Correct":"EXACT")+"!"+tag,"good");
   } else {
     if(hasStreakShield){
       hasStreakShield=false;
       triggerPowerupFlash("🛡  STREAK SAVED!","cyan");
-      setLog("-"+bet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".  SHIELD USED!","info");
+      setLog("-"+totalBet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".  SHIELD USED!","info");
     } else {
       streak=0;
-      setLog("-"+bet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".","bad");
+      setLog("-"+totalBet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".","bad");
     }
   }
   if(chips<=0){chips=0;finalChips=0;setLog("BUST! You're out of chips.","bad");}
@@ -1009,13 +1212,14 @@ function handleAnswer(val){
 
 function handleTimeout(){
   selectedAnswer=-1;
+  let totalBet = doubledDown ? lastBet * 2 : lastBet;
   if(hasStreakShield){
     hasStreakShield=false;
     triggerPowerupFlash("🛡  STREAK SAVED!","cyan");
-    setLog("TIME'S UP!  -"+lastBet+" chips.  SHIELD USED!","info");
+    setLog("TIME'S UP!  -"+totalBet+" chips.  SHIELD USED!","info");
   } else {
     streak=0;
-    setLog("TIME'S UP!  -"+lastBet+" chips.  It was "+correctAnswer+".","bad");
+    setLog("TIME'S UP!  -"+totalBet+" chips.  It was "+correctAnswer+".","bad");
   }
   if(chips<=0){chips=0;finalChips=0;setLog("TIME'S UP! BUST — out of chips.","bad");}
   state="RESULT"; resultTimer=2000;
@@ -1046,7 +1250,8 @@ function beginAct2(){
 function resetRound(){
   updateChipValues(); currentBet=0; lastBet=0; choices=[];
   selectedAnswer=-1; sumNumbers=[]; numPositions=[]; numFlips=[];
-  flipType=0; allSelected=false; state="BET";
+  flipType=0; allSelected=false; doubledDown=false; riskMult=1.0;
+  chipsBeforeBet=0; ddBtn=null; state="BET";
 }
 
 function generateChoicesAct1(correct,mirrored){
