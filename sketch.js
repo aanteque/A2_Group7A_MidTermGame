@@ -1119,6 +1119,11 @@ function handleAnswer(val) {
       setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
     }
   }
+  if (chips <= 0) {
+    chips = 0;
+    finalChips = 0;
+    setLog("BUST! You're out of chips.", "bad");
+  }
   state = "RESULT";
   resultTimer = 2000;
 }
@@ -1130,11 +1135,21 @@ function handleTimeout() {
     "TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".",
     "bad",
   );
+  if (chips <= 0) {
+    chips = 0;
+    finalChips = 0;
+    setLog("TIME'S UP! BUST — you're out of chips.", "bad");
+  }
   state = "RESULT";
   resultTimer = 2000;
 }
 
 function nextRound() {
+  if (chips <= 0) {
+    finalChips = 0;
+    state = "GAME_OVER";
+    return;
+  }
   let maxRounds = act === 1 ? 4 : 6;
   if (actRound >= maxRounds) {
     if (act === 1) {
