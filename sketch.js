@@ -37,6 +37,81 @@ const FLASH_DUR     = 1800;
 let shopBtns    = [];
 let continueBtn = null;
 
+// ── Win Confetti ──────────────────────────────────────────────────────────────
+let confettiParticles = [];
+const CONFETTI_COLS = ["amber","green","cyan","purple","red","white"];
+
+function spawnWinConfetti(bigWin) {
+  confettiParticles = [];
+  let count = bigWin ? 120 : 70;
+  // Left cannon
+  for (let i = 0; i < count/2; i++) {
+    confettiParticles.push(makeChip(PAD + 10, CH * 0.55, true));
+  }
+  // Right cannon
+  for (let i = 0; i < count/2; i++) {
+    confettiParticles.push(makeChip(CW - PAD - 10, CH * 0.55, false));
+  }
+}
+
+function makeChip(x, y, goRight) {
+  let angle = goRight
+    ? random(-PI * 0.85, -PI * 0.15)   // fires left→up→right
+    : random(-PI * 0.85, -PI * 0.15);  // mirror handled via speed sign
+  let spd = random(6, 14);
+  let col_key = CONFETTI_COLS[floor(random(CONFETTI_COLS.length))];
+  let isCircle = random() > 0.5;
+  return {
+    x, y,
+    vx: (goRight ? 1 : -1) * cos(angle) * spd,
+    vy: sin(angle) * spd,
+    rot: random(TWO_PI),
+    rotV: random(-0.25, 0.25),
+    sz: random(7, 15),
+    colKey: col_key,
+    alpha: 255,
+    gravity: random(0.28, 0.45),
+    isCircle,
+    wobble: random(TWO_PI),
+    wobbleSpd: random(0.08, 0.18),
+  };
+}
+
+function updateDrawConfetti() {
+  if (confettiParticles.length === 0) return;
+  let alive = [];
+  for (let p of confettiParticles) {
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += p.gravity;
+    p.vx *= 0.98;
+    p.rot += p.rotV;
+    p.wobble += p.wobbleSpd;
+    p.alpha -= 2.2;
+    if (p.alpha <= 0 || p.y > CH + 40) continue;
+    alive.push(p);
+
+    let c = C[p.colKey] || C.white;
+    push();
+    translate(p.x + sin(p.wobble) * 3, p.y);
+    rotate(p.rot);
+    let a = constrain(p.alpha, 0, 255);
+    fill(color(c[0], c[1], c[2], a));
+    noStroke();
+    if (p.isCircle) {
+      ellipse(0, 0, p.sz * 0.8, p.sz);
+    } else {
+      // chip-like rectangle
+      rect(-p.sz/2, -p.sz*0.35, p.sz, p.sz*0.7, 2);
+      // shine line
+      fill(color(255,255,255, a * 0.4));
+      rect(-p.sz*0.3, -p.sz*0.25, p.sz*0.15, p.sz*0.5, 1);
+    }
+    pop();
+  }
+  confettiParticles = alive;
+}
+
 // ── High Score ────────────────────────────────────────────────────────────────
 const HS_KEY   = "calcucino_hs_v1";
 const HS_MAX   = 5;
@@ -234,6 +309,9 @@ function draw() {
   else wagerPulse = 0;
 
   revealFill += ((revealHover && !revealBtn?.disabled ? 1 : 0) - revealFill) * 0.15;
+
+  // Confetti particles
+  updateDrawConfetti();
 
   // Big power-up activation flash drawn on top of everything
   if (powerupFlash) {
@@ -1047,7 +1125,7 @@ function updateHover() {
 function mousePressed() {
   if (state==="SPLASH") {
     for (let b of diffBtns) { if(inBtn(mouseX,mouseY,b)){difficulty=b.index;return;} }
-    if(startBtn&&inBtn(mouseX,mouseY,startBtn)) fullReset();
+    if(startBtn&&inBtn(mouseX,mouseY,startBtn)){ startBtn=null; fullReset(); }
     return;
   }
   if (state==="GAME_OVER") {
@@ -1107,6 +1185,7 @@ function fullReset() {
   chips=50; streak=0; act=1; actRound=1; finalChips=0;
   hasStreakShield=false; hasTimeSurge=false; powerupFlash=null;
   riskMult=1.0; doubledDown=false; ddBtn=null; ddHover=false;
+  confettiParticles=[];
   startBtn=null; playAgainBtn=null; continueBtn=null; shopBtns=[];
   logMsg="Select a wager, then hit REVEAL."; logType="muted";
   CHIP_VALUES=[5,10,25,50,"ALL"];
@@ -1196,11 +1275,14 @@ function handleAnswer(val){
     chips+=totalBet+profit; streak++;
     let tag = (riskMult>1?"  🔥×"+effMult.toFixed(1):"  ×"+effMult.toFixed(1)) + (doubledDown?" 2×BET":"");
     setLog("+"+profit+" chips! "+(act===1?"Correct":"EXACT")+"!"+tag,"good");
+    spawnWinConfetti(profit >= 50 || doubledDown);
   } else {
     if(hasStreakShield){
       hasStreakShield=false;
+      // Refund the full bet (including any double-down extra already deducted)
+      chips += totalBet;
       triggerPowerupFlash("🛡  STREAK SAVED!","cyan");
-      setLog("-"+totalBet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".  SHIELD USED!","info");
+      setLog("Shield saved you! +"+(totalBet)+" chips refunded. "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".","info");
     } else {
       streak=0;
       setLog("-"+totalBet+" chips.  "+(act===1?"It was "+correctAnswer:"Sum was "+correctAnswer)+".","bad");
@@ -1215,8 +1297,10 @@ function handleTimeout(){
   let totalBet = doubledDown ? lastBet * 2 : lastBet;
   if(hasStreakShield){
     hasStreakShield=false;
+    // Refund the full bet (including any double-down extra already deducted)
+    chips += totalBet;
     triggerPowerupFlash("🛡  STREAK SAVED!","cyan");
-    setLog("TIME'S UP!  -"+totalBet+" chips.  SHIELD USED!","info");
+    setLog("TIME'S UP! Shield saved you! +"+(totalBet)+" chips refunded.","info");
   } else {
     streak=0;
     setLog("TIME'S UP!  -"+totalBet+" chips.  It was "+correctAnswer+".","bad");
