@@ -37,6 +37,31 @@ const FLASH_DUR     = 1800;
 let shopBtns    = [];
 let continueBtn = null;
 
+// ── High Score ────────────────────────────────────────────────────────────────
+const HS_KEY   = "calcucino_hs_v1";
+const HS_MAX   = 5;
+let highScores = [];
+
+function loadHighScores() {
+  try {
+    let raw = localStorage.getItem(HS_KEY);
+    highScores = raw ? JSON.parse(raw) : [];
+  } catch(e) { highScores = []; }
+}
+
+function saveHighScore(chipsAmt, diffLabel) {
+  loadHighScores();
+  highScores.push({ chips: chipsAmt, diff: diffLabel, date: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}) });
+  highScores.sort((a,b) => b.chips - a.chips);
+  highScores = highScores.slice(0, HS_MAX);
+  try { localStorage.setItem(HS_KEY, JSON.stringify(highScores)); } catch(e) {}
+}
+
+function isNewRecord(chipsAmt) {
+  loadHighScores();
+  return highScores.length === 0 || chipsAmt > highScores[0].chips;
+}
+
 // ── Layout ────────────────────────────────────────────────────────────────────
 const PAD = 20;
 const GAP = 14;
@@ -150,7 +175,7 @@ function drawCard(x, y, w, h, fillColor) {
 // ═════════════════════════════════════════════════════════════════════════════
 let logoImg = null;
 function preload() { logoImg = loadImage("assets/Calcusino_p.png"); }
-function setup()   { createCanvas(CW, CH); textFont("Impact"); }
+function setup()   { createCanvas(CW, CH); textFont("Impact"); loadHighScores(); }
 
 function draw() {
   background(col("bg"));
@@ -711,18 +736,102 @@ function drawSplash() {
 //  GAME OVER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawGameOver() {
-  let chipColor=finalChips>=100?"green":finalChips>=50?"amber":"red";
-  let cardW=CW-PAD*2, cardH=290, cardX=PAD, cardY=CH/2-cardH/2-20;
+  loadHighScores();
+  let isRecord = highScores.length === 0 || finalChips > highScores[0].chips;
+  let chipColor = finalChips>=100?"green":finalChips>=50?"amber":"red";
+
+  // ── Result card (compact, top half) ───────────────────────────────────────
+  let cardW=CW-PAD*2, cardH=220, cardX=PAD, cardY=PAD+H_HEADER-10;
   drawCard(cardX,cardY,cardW,cardH);
   textAlign(CENTER,CENTER);
   let midX=CW/2, midY=cardY+cardH/2;
-  fill(col("shadow")); setFont(80,"display"); text("GAME OVER!",midX+4,midY-58);
-  setShadow("rgba(210,35,45,0.5)",20); fill(col("red")); text("GAME OVER!",midX,midY-62); clearShadow();
-  stroke(col("bord")); strokeWeight(2); line(cardX+30,midY-8,cardX+cardW-30,midY-8); noStroke();
-  setFont(13,"ui"); fill(col("muted")); text("FINAL CHIPS",midX,midY+20);
-  fill(col(chipColor)); setFont(64,"display"); text(finalChips,midX,midY+65);
 
-  let bw=220, bh=H_REVEAL, bx=CW/2-bw/2, by=cardY+cardH+GAP*2;
+  // NEW RECORD banner
+  if (isRecord && finalChips > 0) {
+    setShadow("rgba(220,155,10,0.8)",16);
+    fill(col("amber")); setFont(13,"display"); textAlign(CENTER,TOP);
+    text("★  NEW RECORD  ★", midX, cardY+10);
+    clearShadow();
+  }
+
+  fill(col("shadow")); setFont(62,"display"); textAlign(CENTER,CENTER);
+  text("GAME OVER!",midX+3,midY-46);
+  setShadow("rgba(210,35,45,0.5)",18); fill(col("red"));
+  text("GAME OVER!",midX,midY-49); clearShadow();
+
+  stroke(col("bord")); strokeWeight(1);
+  line(cardX+24,midY-2,cardX+cardW-24,midY-2); noStroke();
+
+  setFont(11,"ui"); fill(col("muted")); textAlign(CENTER,CENTER);
+  text("FINAL CHIPS", midX, midY+16);
+  fill(col(chipColor)); setFont(52,"display");
+  text(finalChips, midX, midY+52);
+
+  // Difficulty badge
+  let ds = DIFF_SETTINGS[difficulty];
+  setFont(11,"display"); fill(col(ds.color)); textAlign(CENTER,CENTER);
+  text(ds.label + "  MODE", midX, midY+88);
+
+  // ── Leaderboard card ────────────────────────────────────────────────────────
+  let lbY = cardY + cardH + GAP;
+  let lbH = 160;
+  drawCard(cardX, lbY, cardW, lbH);
+
+  // Title row
+  setShadow("rgba(220,155,10,0.4)",8);
+  fill(col("amber")); setFont(14,"display"); textAlign(CENTER,TOP);
+  text("★  HIGH SCORES  ★", midX, lbY+10);
+  clearShadow();
+
+  // Column headers
+  let col1=cardX+20, col2=cardX+cardW-130, col3=cardX+cardW-60;
+  setFont(9,"ui"); fill(col("muted")); textAlign(LEFT,TOP);
+  text("RANK  CHIPS", col1, lbY+30);
+  textAlign(LEFT,TOP); text("MODE", col2, lbY+30);
+  textAlign(LEFT,TOP); text("DATE", col3, lbY+30);
+
+  stroke(col("bord",50)); strokeWeight(1);
+  line(cardX+12, lbY+42, cardX+cardW-12, lbY+42); noStroke();
+
+  // Rows
+  let medals = ["🥇","🥈","🥉","④","⑤"];
+  let rowY = lbY+48;
+  for (let i=0; i<min(HS_MAX, max(highScores.length,1)); i++) {
+    let entry = highScores[i];
+    let isThisRun = entry && entry.chips===finalChips && i===0 && isRecord;
+    let rowAlpha = entry ? 255 : 60;
+
+    if (isThisRun) {
+      // Highlight row
+      fill(color(200,140,0,30)); noStroke();
+      rect(cardX+10, rowY-2, cardW-20, 18, 2);
+    }
+
+    setFont(12,"display"); textAlign(LEFT,CENTER);
+    fill(col("white",rowAlpha));
+    text(medals[i], col1, rowY+7);
+
+    if (entry) {
+      let entryColor = entry.chips>=100?"green":entry.chips>=50?"amber":"red";
+      fill(col(entryColor)); setFont(13,"display"); textAlign(LEFT,CENTER);
+      text(entry.chips, col1+28, rowY+7);
+
+      // Diff badge
+      let dColor = entry.diff==="EASY"?"green":entry.diff==="NORMAL"?"amber":"red";
+      fill(col(dColor,200)); setFont(9,"display"); textAlign(LEFT,CENTER);
+      text(entry.diff, col2, rowY+7);
+
+      fill(col("muted")); setFont(9,"ui"); textAlign(LEFT,CENTER);
+      text(entry.date, col3, rowY+7);
+    } else {
+      fill(col("muted",60)); setFont(10,"ui"); textAlign(LEFT,CENTER);
+      text("—", col1+28, rowY+7);
+    }
+    rowY += 20;
+  }
+
+  // ── Play Again button ────────────────────────────────────────────────────────
+  let bw=220, bh=H_REVEAL, bx=CW/2-bw/2, by=lbY+lbH+GAP;
   let hov=playAgainBtn?inBtn(mouseX,mouseY,playAgainBtn):false;
   fill(col("amber")); noStroke(); rect(bx-3,by-3,bw+6,bh+6,4);
   fill(color(120,12,12)); noStroke(); rect(bx,by+4,bw,bh,2);
@@ -913,7 +1022,7 @@ function handleTimeout(){
 }
 
 function nextRound(){
-  if(chips<=0){finalChips=0;state="GAME_OVER";return;}
+  if(chips<=0){finalChips=0;saveHighScore(0,DIFF_SETTINGS[difficulty].label);state="GAME_OVER";return;}
   let maxRounds=act===1?4:6;
   if(actRound>=maxRounds){
     if(act===1){
@@ -921,7 +1030,7 @@ function nextRound(){
       state="SHOP"; shopBtns=[]; continueBtn=null;
       return;
     } else {
-      finalChips=chips; state="GAME_OVER"; return;
+      finalChips=chips; saveHighScore(chips,DIFF_SETTINGS[difficulty].label); state="GAME_OVER"; return;
     }
   }
   actRound++;
