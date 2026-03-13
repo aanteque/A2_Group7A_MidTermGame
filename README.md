@@ -1,6 +1,6 @@
 ## Project Title
 
-Calcucino
+Calcusino
 
 ---
 
@@ -16,7 +16,7 @@ Jisoo Lee j366lee 21092773
 
 ## Description
 
-Calcucino is a betting game where you, the player, put money behind your guesses and answer number related problems. The numbers flip, fuzz, and dissappear quickly, so think carefully about your bets!
+Calcusino is a betting game where you, the player, put money behind your guesses and answer number related problems. The numbers flip, fuzz, and dissappear quickly, so think carefully about your bets!
 
 ---
 
@@ -44,7 +44,7 @@ Post-Showcase: Two planned improvements
 
 ## Assets
 
-Calcucino_p.png was created by Dolapo Ajiboye.
+Calcusino_p.png was created by Dolapo Ajiboye.
 ---
 
 ## GenAI
