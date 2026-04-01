@@ -1105,12 +1105,12 @@ function drawSplash() {
   let lx = cx + 20,
     lw = cw - 40;
   let lines = [
-    { label: "ACT I  —  TUTORIAL  (4 rounds)", color: "cyan" },
+    { label: "ACT I  —  TUTORIAL  (4 rounds)", color: "actI" },
     {
       text: "A number flashes somewhere on screen. It will always be mirrored, flipped, or both. Bet chips, then pick the real number from four choices.",
     },
     { spacer: true },
-    { label: "ACT II —  SUM BLITZ  (6 rounds)", color: "purple" },
+    { label: "ACT II —  SUM BLITZ  (6 rounds)", color: "actII" },
     {
       text: "Multiple numbers appear scattered across the screen. Add them up in your head, then pick the correct sum. Some numbers may be flipped.",
     },
@@ -1133,8 +1133,13 @@ function drawSplash() {
       continue;
     }
     if (l.label) {
-      let lc = C[l.color] || C.cyan;
-      fill(col(l.color));
+      if (l.color === "actI") {
+        fill(color(31, 191, 255));
+      } else if (l.color === "actII") {
+        fill(color(248, 31, 255));
+      } else {
+        fill(col(l.color));
+      }
       setFont(13, "display");
       textAlign(LEFT, TOP);
       text(l.label, lx, lineY);
@@ -1163,7 +1168,7 @@ function drawSplash() {
   // Difficulty selection
   let diffLabelY = lineY + 20;
   setFont(16, "display");
-  fill(col("cyan"));
+  fill(color(31, 191, 255));
   textAlign(CENTER, TOP);
   text("SELECT DIFFICULTY", CW / 2, diffLabelY);
 
@@ -1178,10 +1183,10 @@ function drawSplash() {
     let diff = DIFF_SETTINGS[i];
     let x = dbX + i * (dbW + dbGap);
     let active = i === difficulty;
-    fill(active ? col(diff.color) : col("bord"));
+    fill(active ? col("purple") : col(diff.color));
     noStroke();
     rect(x, diffY, dbW, dbH, 4);
-    fill(active ? col("white") : col("muted"));
+    fill(col("white"));
     setFont(13, "ui");
     textAlign(CENTER, CENTER);
     text(diff.label, x + dbW / 2, diffY + dbH / 2);
@@ -1233,8 +1238,9 @@ function drawGameOver() {
   let midX = CW / 2,
     midY = cardY + cardH / 2 - 20;
 
+  let titleSize = isWinner ? 48 : 80;
   fill(col("shadow"));
-  setFont(80, "display");
+  setFont(titleSize, "display");
   text(isWinner ? "YOU DID NOT LOSE!" : "GAME OVER", midX + 4, midY - 38);
   setShadow("rgba(210,35,45,0.5)", 20);
   fill(col("red"));
@@ -1337,7 +1343,11 @@ function mousePressed() {
     return;
   }
   if (state === "GAME_OVER") {
-    if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) fullReset();
+    if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) {
+      stopAllGameSounds();
+      playAgainBtn = null;
+      state = "SPLASH";
+    }
     return;
   }
   if (state === "ACT_TRANSITION") return;
