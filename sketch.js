@@ -16,8 +16,172 @@ const C = {
   muted: [130, 110, 170], // muted purple-grey
   text: [240, 235, 255], // near-white
   white: [255, 255, 255],
-  shadow: [90, 30, 120], // purple offset shadow for title
+  shadow: [90, 30, 120],
 };
+
+// ── Difficulty ────────────────────────────────────────────────────────────────
+let difficulty = 1;
+const DIFF_SETTINGS = [
+  {
+    label: "EASY",
+    color: "green",
+    desc: "Longer flash times. Forgiving.",
+    timeScale: 1.6,
+    rewardMult: 0.8,
+    choiceSpread: 8,
+  },
+  {
+    label: "NORMAL",
+    color: "amber",
+    desc: "Balanced. The intended experience.",
+    timeScale: 1.0,
+    rewardMult: 1,
+    choiceSpread: 5,
+  },
+  {
+    label: "HARD",
+    color: "red",
+    desc: "Brutal flash times. Tight choices.",
+    timeScale: 0.6,
+    rewardMult: 1.3,
+    choiceSpread: 2,
+  },
+];
+let diffBtns = [];
+
+// ── Power-ups ─────────────────────────────────────────────────────────────────
+let hasStreakShield = false;
+let hasTimeSurge = false;
+let powerupFlash = null; // { label, colorKey, timer, duration }
+const FLASH_DUR = 1800;
+
+let shopBtns = [];
+let continueBtn = null;
+
+let chipsImg = null;
+let levelImg = null;
+let streakImg = null;
+let countdownSound = null;
+let winSound = null;
+let loseSound = null;
+let jackpotSound = null;
+let levelUpSound = null;
+let dropCoinSound = null;
+let revealSound = null;
+let failTrumpetSound = null;
+let countdownSoundTimeout = null;
+
+// ── Win Confetti ──────────────────────────────────────────────────────────────
+let confettiParticles = [];
+const CONFETTI_COLS = ["amber", "green", "cyan", "purple", "red", "white"];
+
+function spawnWinConfetti(bigWin) {
+  confettiParticles = [];
+  let count = bigWin ? 120 : 70;
+  // Left cannon
+  for (let i = 0; i < count / 2; i++) {
+    confettiParticles.push(makeChip(PAD + 10, CH * 0.55, true));
+  }
+  // Right cannon
+  for (let i = 0; i < count / 2; i++) {
+    confettiParticles.push(makeChip(CW - PAD - 10, CH * 0.55, false));
+  }
+}
+
+function makeChip(x, y, goRight) {
+  let angle = goRight
+    ? random(-PI * 0.85, -PI * 0.15) // fires left→up→right
+    : random(-PI * 0.85, -PI * 0.15); // mirror handled via speed sign
+  let spd = random(6, 14);
+  let col_key = CONFETTI_COLS[floor(random(CONFETTI_COLS.length))];
+  let isCircle = random() > 0.5;
+  return {
+    x,
+    y,
+    vx: (goRight ? 1 : -1) * cos(angle) * spd,
+    vy: sin(angle) * spd,
+    rot: random(TWO_PI),
+    rotV: random(-0.25, 0.25),
+    sz: random(7, 15),
+    colKey: col_key,
+    alpha: 255,
+    gravity: random(0.28, 0.45),
+    isCircle,
+    wobble: random(TWO_PI),
+    wobbleSpd: random(0.08, 0.18),
+  };
+}
+
+function updateDrawConfetti() {
+  if (confettiParticles.length === 0) return;
+  let alive = [];
+  for (let p of confettiParticles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.vx *= 0.98;
+    p.rot += p.rotV;
+    p.wobble += p.wobbleSpd;
+    p.alpha -= 2.2;
+    if (p.alpha <= 0 || p.y > CH + 40) continue;
+    alive.push(p);
+
+    let c = C[p.colKey] || C.white;
+    push();
+    translate(p.x + sin(p.wobble) * 3, p.y);
+    rotate(p.rot);
+    let a = constrain(p.alpha, 0, 255);
+    fill(color(c[0], c[1], c[2], a));
+    noStroke();
+    if (p.isCircle) {
+      ellipse(0, 0, p.sz * 0.8, p.sz);
+    } else {
+      // chip-like rectangle
+      rect(-p.sz / 2, -p.sz * 0.35, p.sz, p.sz * 0.7, 2);
+      // shine line
+      fill(color(255, 255, 255, a * 0.4));
+      rect(-p.sz * 0.3, -p.sz * 0.25, p.sz * 0.15, p.sz * 0.5, 1);
+    }
+    pop();
+  }
+  confettiParticles = alive;
+}
+
+// ── High Score ────────────────────────────────────────────────────────────────
+const HS_KEY = "calcucino_hs_v1";
+const HS_MAX = 5;
+let highScores = [];
+
+function loadHighScores() {
+  try {
+    let raw = localStorage.getItem(HS_KEY);
+    highScores = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    highScores = [];
+  }
+}
+
+function saveHighScore(chipsAmt, diffLabel) {
+  loadHighScores();
+  highScores.push({
+    chips: chipsAmt,
+    diff: diffLabel,
+    date: new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+  });
+  highScores.sort((a, b) => b.chips - a.chips);
+  highScores = highScores.slice(0, HS_MAX);
+  try {
+    localStorage.setItem(HS_KEY, JSON.stringify(highScores));
+  } catch (e) {}
+}
+
+function isNewRecord(chipsAmt) {
+  loadHighScores();
+  return highScores.length === 0 || chipsAmt > highScores[0].chips;
+}
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const PAD = 20;
@@ -124,7 +288,7 @@ function getA1Diff() {
     { ms: 650, label: "BLURRED", mult: 2.5 },
     { ms: 380, label: "FUZZY", mult: 3.5 },
   ];
-  return t[min(actRound - 1, t.length - 1)];
+  return applyDifficulty(t[min(actRound - 1, t.length - 1)]);
 }
 
 function getA2Diff() {
@@ -178,7 +342,20 @@ function getA2Diff() {
       mult: 4.5,
     },
   ];
-  return t[min(actRound - 1, t.length - 1)];
+  return applyDifficulty(t[min(actRound - 1, t.length - 1)]);
+}
+
+function getDifficultySettings() {
+  return DIFF_SETTINGS[constrain(difficulty, 0, DIFF_SETTINGS.length - 1)];
+}
+
+function applyDifficulty(diff) {
+  let settings = getDifficultySettings();
+  return {
+    ...diff,
+    ms: max(200, floor(diff.ms * settings.timeScale)),
+    mult: parseFloat((diff.mult * settings.rewardMult).toFixed(2)),
+  };
 }
 
 function getDiff() {
@@ -235,27 +412,13 @@ function drawCard(x, y, w, h, fillColor) {
 //  SETUP & DRAW
 // ═════════════════════════════════════════════════════════════════════════════
 let logoImg = null;
-let chipsImg = null;
-let levelImg = null;
-let streakImg = null;
-let countdownSound = null;
-let winSound = null;
-let loseSound = null;
-let jackpotSound = null;
-let levelUpSound = null;
-let dropCoinSound = null;
-let revealSound = null;
-let failTrumpetSound = null;
 
 function preload() {
-  // Load the game logo and the three stat icons.
-  // Adjust the file names here if you rename or move the image files.
   logoImg = loadImage("assets/Calcusino_p.png");
   chipsImg = loadImage("assets/images/Chips.png");
   levelImg = loadImage("assets/images/Level.png");
   streakImg = loadImage("assets/images/Streak.png");
 
-  // Load sound effects.
   countdownSound = loadSound(
     "assets/sounds/lesiakower-countdown-sound-effect-8-bit-151797.mp3",
   );
@@ -274,9 +437,7 @@ function preload() {
   dropCoinSound = loadSound(
     "assets/sounds/dragon-studio-dropping-a-coin-478359.mp3",
   );
-  revealSound = loadSound(
-    "assets/sounds/universfield-interface-124464.mp3",
-  );
+  revealSound = loadSound("assets/sounds/universfield-interface-124464.mp3");
   failTrumpetSound = loadSound(
     "assets/sounds/universfield-cartoon-fail-trumpet-278822.mp3",
   );
@@ -296,6 +457,10 @@ function draw() {
   }
   if (state === "GAME_OVER") {
     drawGameOver();
+    return;
+  }
+  if (state === "SHOP") {
+    drawShop();
     return;
   }
   if (state === "ACT_TRANSITION") {
@@ -360,6 +525,12 @@ function drawHeader() {
     CW / 2,
     ty + 86,
   );
+
+  let diff = getDifficultySettings();
+  setFont(10, "ui");
+  fill(col("muted"));
+  textAlign(CENTER, TOP);
+  text(`DIFFICULTY: ${diff.label}`, CW / 2, ty + 106);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -808,6 +979,96 @@ function drawActTransition() {
   clearShadow();
 }
 
+function drawShop() {
+  background(col("bg"));
+  let cardX = PAD,
+    cardY = PAD,
+    cardW = CW - PAD * 2,
+    cardH = CH - PAD * 2;
+  drawCard(cardX, cardY, cardW, cardH);
+
+  setFont(28, "display");
+  fill(col("amber"));
+  textAlign(CENTER, TOP);
+  text("POWER-UP SHOP", CW / 2, cardY + 32);
+
+  shopBtns = [];
+  let itemY = cardY + 90;
+  let itemH = 92;
+  let itemW = cardW - PAD * 2;
+  let itemX = cardX + PAD;
+  let itemGap = 16;
+
+  const items = [
+    {
+      key: "streakShield",
+      title: "Streak Shield",
+      description: "Keep your streak after one miss.",
+      cost: 40,
+      owned: hasStreakShield,
+    },
+    {
+      key: "timeSurge",
+      title: "Time Surge",
+      description: "Extra answer time on the next round.",
+      cost: 30,
+      owned: hasTimeSurge,
+    },
+  ];
+
+  for (let item of items) {
+    drawCard(itemX, itemY, itemW, itemH, col("bg"));
+    fill(col("white"));
+    setFont(16, "display");
+    textAlign(LEFT, TOP);
+    text(item.title, itemX + 16, itemY + 14);
+
+    setFont(11, "ui");
+    fill(col("muted"));
+    text(item.description, itemX + 16, itemY + 42);
+
+    let statusText = item.owned ? "OWNED" : `COST: ${item.cost} chips`;
+    fill(item.owned ? col("green") : col("amber"));
+    setFont(12, "ui");
+    textAlign(RIGHT, TOP);
+    text(statusText, itemX + itemW - 16, itemY + 16);
+
+    if (!item.owned) {
+      let btnW = 100,
+        btnH = 28;
+      let btnX = itemX + itemW - btnW - 16,
+        btnY = itemY + itemH - btnH - 16;
+      drawCard(btnX, btnY, btnW, btnH, col("red"));
+      fill(col("white"));
+      setFont(12, "ui");
+      textAlign(CENTER, CENTER);
+      text("BUY", btnX + btnW / 2, btnY + btnH / 2);
+      shopBtns.push({ x: btnX, y: btnY, w: btnW, h: btnH, key: item.key });
+    }
+
+    itemY += itemH + itemGap;
+  }
+
+  let bw = 220,
+    bh = H_REVEAL;
+  let bx = CW / 2 - bw / 2,
+    by = itemY + 10;
+  fill(col("amber"));
+  noStroke();
+  rect(bx - 3, by - 3, bw + 6, bh + 6, 4);
+  fill(color(120, 12, 12));
+  noStroke();
+  rect(bx, by + 4, bw, bh, 2);
+  fill(col("red"));
+  noStroke();
+  rect(bx, by, bw, bh - 4, 2);
+  fill(col("white"));
+  setFont(20, "display");
+  textAlign(CENTER, CENTER);
+  outlineText("CONTINUE", CW / 2, by + bh / 2 - 1);
+  continueBtn = { x: bx, y: by, w: bw, h: bh };
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  SPLASH SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
@@ -899,6 +1160,39 @@ function drawSplash() {
     }
   }
 
+  // Difficulty selection
+  let diffLabelY = lineY + 20;
+  setFont(16, "display");
+  fill(col("cyan"));
+  textAlign(CENTER, TOP);
+  text("SELECT DIFFICULTY", CW / 2, diffLabelY);
+
+  let diffY = diffLabelY + 30;
+  let dbW = 100;
+  let dbH = 38;
+  let dbGap = 10;
+  let dbTotal = DIFF_SETTINGS.length * dbW + (DIFF_SETTINGS.length - 1) * dbGap;
+  let dbX = CW / 2 - dbTotal / 2;
+  diffBtns = [];
+  for (let i = 0; i < DIFF_SETTINGS.length; i++) {
+    let diff = DIFF_SETTINGS[i];
+    let x = dbX + i * (dbW + dbGap);
+    let active = i === difficulty;
+    fill(active ? col(diff.color) : col("bord"));
+    noStroke();
+    rect(x, diffY, dbW, dbH, 4);
+    fill(active ? col("white") : col("muted"));
+    setFont(13, "ui");
+    textAlign(CENTER, CENTER);
+    text(diff.label, x + dbW / 2, diffY + dbH / 2);
+    diffBtns.push({ x, y: diffY, w: dbW, h: dbH, index: i });
+  }
+
+  setFont(11, "ui");
+  fill(col("muted"));
+  textAlign(CENTER, TOP);
+  text(DIFF_SETTINGS[difficulty].desc, CW / 2, diffY + dbH + 12);
+
   // START button
   let bw = 240,
     bh = H_REVEAL;
@@ -928,6 +1222,7 @@ function drawSplash() {
 //  GAME OVER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawGameOver() {
+  let isWinner = finalChips > 0;
   let cardW = CW - PAD * 2,
     cardH = 270;
   let cardX = PAD,
@@ -938,7 +1233,6 @@ function drawGameOver() {
   let midX = CW / 2,
     midY = cardY + cardH / 2 - 20;
 
-  let isWinner = finalChips > 0;
   fill(col("shadow"));
   setFont(80, "display");
   text(isWinner ? "YOU DID NOT LOSE!" : "GAME OVER", midX + 4, midY - 38);
@@ -1018,7 +1312,28 @@ function updateHover() {
 
 function mousePressed() {
   if (state === "SPLASH") {
+    for (let b of diffBtns) {
+      if (inBtn(mouseX, mouseY, b)) {
+        difficulty = b.index;
+        return;
+      }
+    }
     if (startBtn && inBtn(mouseX, mouseY, startBtn)) fullReset();
+    return;
+  }
+  if (state === "SHOP") {
+    for (let b of shopBtns) {
+      if (inBtn(mouseX, mouseY, b)) {
+        handleShopPurchase(b.key);
+        return;
+      }
+    }
+    if (continueBtn && inBtn(mouseX, mouseY, continueBtn)) {
+      stopAllGameSounds();
+      playRevealSound();
+      state = "ACT_TRANSITION";
+      transitionTimer = 3000;
+    }
     return;
   }
   if (state === "GAME_OVER") {
@@ -1073,6 +1388,8 @@ function fullReset() {
   act = 1;
   actRound = 1;
   finalChips = 0;
+  hasStreakShield = false;
+  hasTimeSurge = false;
   startBtn = null;
   playAgainBtn = null;
   logMsg = "Select a wager, then hit REVEAL.";
@@ -1155,15 +1472,15 @@ function generatePositions(count, scatter) {
   return positions;
 }
 
-function endFlash() {
-  state = "ANSWER";
-  glitching = false;
-  answerTimer = ANSWER_TIME;
-  setLog(act === 1 ? "Pick your answer!" : "What was the sum?", "info");
-  playCountdownSound();
+function clearCountdownSoundSchedule() {
+  if (countdownSoundTimeout !== null) {
+    clearTimeout(countdownSoundTimeout);
+    countdownSoundTimeout = null;
+  }
 }
 
 function stopAllGameSounds() {
+  clearCountdownSoundSchedule();
   [
     countdownSound,
     winSound,
@@ -1171,21 +1488,29 @@ function stopAllGameSounds() {
     jackpotSound,
     levelUpSound,
     dropCoinSound,
+    revealSound,
+    failTrumpetSound,
   ].forEach((sound) => {
-    if (sound && sound.isLoaded() && sound.isPlaying()) {
+    if (sound && sound.isLoaded && sound.isPlaying && sound.isPlaying()) {
       sound.stop();
     }
   });
 }
 
 function stopCountdownSound() {
-  if (countdownSound && countdownSound.isLoaded() && countdownSound.isPlaying()) {
+  clearCountdownSoundSchedule();
+  if (
+    countdownSound &&
+    countdownSound.isLoaded &&
+    countdownSound.isPlaying &&
+    countdownSound.isPlaying()
+  ) {
     countdownSound.stop();
   }
 }
 
 function playSound(sound) {
-  if (sound && sound.isLoaded()) {
+  if (sound && sound.isLoaded && sound.isLoaded()) {
     stopAllGameSounds();
     sound.playMode("restart");
     sound.play();
@@ -1193,7 +1518,31 @@ function playSound(sound) {
 }
 
 function playCountdownSound() {
-  playSound(countdownSound);
+  if (!countdownSound || !countdownSound.isLoaded || !countdownSound.isLoaded())
+    return;
+  clearCountdownSoundSchedule();
+
+  let soundMs = countdownSound.duration() * 1000;
+  let timeMs = answerTimer > 0 ? answerTimer : ANSWER_TIME;
+
+  if (timeMs > soundMs) {
+    let delay = timeMs - soundMs;
+    countdownSoundTimeout = setTimeout(() => {
+      countdownSoundTimeout = null;
+      if (
+        countdownSound &&
+        countdownSound.isLoaded &&
+        countdownSound.isLoaded()
+      ) {
+        countdownSound.playMode("restart");
+        countdownSound.play();
+      }
+    }, delay);
+  } else {
+    let cueStart = max(0, soundMs - timeMs) / 1000;
+    countdownSound.playMode("restart");
+    countdownSound.play(0, 1, 1, cueStart, timeMs / 1000);
+  }
 }
 
 function playWinSound() {
@@ -1213,7 +1562,7 @@ function playLevelUpSound() {
 }
 
 function playRevealSound() {
-  if (revealSound && revealSound.isLoaded()) {
+  if (revealSound && revealSound.isLoaded && revealSound.isLoaded()) {
     revealSound.playMode("restart");
     revealSound.play();
   }
@@ -1224,11 +1573,62 @@ function playDropCoinSound() {
 }
 
 function playFailTrumpetSound() {
-  if (failTrumpetSound && failTrumpetSound.isLoaded()) {
+  if (
+    failTrumpetSound &&
+    failTrumpetSound.isLoaded &&
+    failTrumpetSound.isLoaded()
+  ) {
     stopAllGameSounds();
     failTrumpetSound.playMode("restart");
     failTrumpetSound.play();
   }
+}
+
+function handleShopPurchase(key) {
+  stopAllGameSounds();
+  if (key === "streakShield") {
+    if (hasStreakShield) {
+      setLog("You already have Streak Shield.", "muted");
+      return;
+    }
+    if (chips < 40) {
+      setLog("Not enough chips for Streak Shield.", "bad");
+      return;
+    }
+    chips -= 40;
+    hasStreakShield = true;
+    playDropCoinSound();
+    setLog("Streak Shield purchased!", "good");
+    return;
+  }
+  if (key === "timeSurge") {
+    if (hasTimeSurge) {
+      setLog("You already have Time Surge.", "muted");
+      return;
+    }
+    if (chips < 30) {
+      setLog("Not enough chips for Time Surge.", "bad");
+      return;
+    }
+    chips -= 30;
+    hasTimeSurge = true;
+    playDropCoinSound();
+    setLog("Time Surge purchased!", "good");
+    return;
+  }
+}
+
+function endFlash() {
+  state = "ANSWER";
+  glitching = false;
+  answerTimer = ANSWER_TIME * (hasTimeSurge ? 1.5 : 1);
+  if (hasTimeSurge) {
+    hasTimeSurge = false;
+    setLog("Time Surge activated! More time this round.", "special");
+  } else {
+    setLog(act === 1 ? "Pick your answer!" : "What was the sum?", "info");
+  }
+  playCountdownSound();
 }
 
 function handleAnswer(val) {
@@ -1244,8 +1644,20 @@ function handleAnswer(val) {
       playJackpotSound();
     } else {
       chips -= bet;
-      streak = 0;
-      setLog("-" + bet + " chips.  It was " + correctAnswer + ".", "bad");
+      if (hasStreakShield) {
+        hasStreakShield = false;
+        setLog(
+          "-" +
+            bet +
+            " chips. Streak preserved by shield! It was " +
+            correctAnswer +
+            ".",
+          "good",
+        );
+      } else {
+        streak = 0;
+        setLog("-" + bet + " chips.  It was " + correctAnswer + ".", "bad");
+      }
       if (chips > 0) playLoseSound();
     }
   } else {
@@ -1257,8 +1669,20 @@ function handleAnswer(val) {
       playJackpotSound();
     } else {
       chips -= bet;
-      streak = 0;
-      setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
+      if (hasStreakShield) {
+        hasStreakShield = false;
+        setLog(
+          "-" +
+            bet +
+            " chips. Streak preserved by shield! Sum was " +
+            correctAnswer +
+            ".",
+          "good",
+        );
+      } else {
+        streak = 0;
+        setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
+      }
       if (chips > 0) playLoseSound();
     }
   }
@@ -1274,11 +1698,23 @@ function handleAnswer(val) {
 
 function handleTimeout() {
   selectedAnswer = -1;
-  streak = 0;
-  setLog(
-    "TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".",
-    "bad",
-  );
+  if (hasStreakShield) {
+    hasStreakShield = false;
+    setLog(
+      "TIME'S UP! -" +
+        lastBet +
+        " chips. Streak preserved by shield! It was " +
+        correctAnswer +
+        ".",
+      "good",
+    );
+  } else {
+    streak = 0;
+    setLog(
+      "TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".",
+      "bad",
+    );
+  }
   chips -= lastBet;
 
   if (chips > 0) playLoseSound();
@@ -1309,8 +1745,8 @@ function nextRound() {
     if (act === 1) {
       stopAllGameSounds();
       playLevelUpSound();
-      state = "ACT_TRANSITION";
-      transitionTimer = 3000;
+      state = "SHOP";
+      setLog("Shop before Act II — buy a boost or continue.", "special");
       return;
     } else {
       stopAllGameSounds();
@@ -1327,7 +1763,6 @@ function nextRound() {
 }
 
 function beginAct2() {
-  stopAllGameSounds();
   act = 2;
   actRound = 1;
   setLog("ACT II — Guess the sum of the numbers!", "special");
