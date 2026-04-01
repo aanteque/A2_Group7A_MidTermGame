@@ -238,6 +238,14 @@ let logoImg = null;
 let chipsImg = null;
 let levelImg = null;
 let streakImg = null;
+let countdownSound = null;
+let winSound = null;
+let loseSound = null;
+let jackpotSound = null;
+let levelUpSound = null;
+let dropCoinSound = null;
+let revealSound = null;
+let failTrumpetSound = null;
 
 function preload() {
   // Load the game logo and the three stat icons.
@@ -246,6 +254,32 @@ function preload() {
   chipsImg = loadImage("assets/images/Chips.png");
   levelImg = loadImage("assets/images/Level.png");
   streakImg = loadImage("assets/images/Streak.png");
+
+  // Load sound effects.
+  countdownSound = loadSound(
+    "assets/sounds/lesiakower-countdown-sound-effect-8-bit-151797.mp3",
+  );
+  winSound = loadSound(
+    "assets/sounds/floraphonic-slot-machine-coin-payout-2-182547.mp3",
+  );
+  loseSound = loadSound(
+    "assets/sounds/freesound_community-game-over-arcade-6435.mp3",
+  );
+  jackpotSound = loadSound(
+    "assets/sounds/floraphonic-playful-casino-slot-machine-jackpot-3-183921.mp3",
+  );
+  levelUpSound = loadSound(
+    "assets/sounds/lesiakower-level-up-enhancement-8-bit-retro-sound-effect-153002.mp3",
+  );
+  dropCoinSound = loadSound(
+    "assets/sounds/dragon-studio-dropping-a-coin-478359.mp3",
+  );
+  revealSound = loadSound(
+    "assets/sounds/universfield-interface-124464.mp3",
+  );
+  failTrumpetSound = loadSound(
+    "assets/sounds/universfield-cartoon-fail-trumpet-278822.mp3",
+  );
 }
 
 function setup() {
@@ -894,40 +928,45 @@ function drawSplash() {
 //  GAME OVER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawGameOver() {
-  let chipColor =
-    finalChips >= 100 ? "green" : finalChips >= 0 ? "amber" : "red";
   let cardW = CW - PAD * 2,
-    cardH = 290;
+    cardH = 270;
   let cardX = PAD,
-    cardY = CH / 2 - cardH / 2 - 20;
+    cardY = CH / 2 - cardH / 2 - 10;
   drawCard(cardX, cardY, cardW, cardH);
 
   textAlign(CENTER, CENTER);
   let midX = CW / 2,
-    midY = cardY + cardH / 2;
+    midY = cardY + cardH / 2 - 20;
 
+  let isWinner = finalChips > 0;
   fill(col("shadow"));
   setFont(80, "display");
-  text("GAME OVER!", midX + 4, midY - 58);
+  text(isWinner ? "YOU DID NOT LOSE!" : "GAME OVER", midX + 4, midY - 38);
   setShadow("rgba(210,35,45,0.5)", 20);
   fill(col("red"));
-  text("GAME OVER!", midX, midY - 62);
+  text(isWinner ? "YOU DID NOT LOSE!" : "GAME OVER", midX, midY - 42);
   clearShadow();
 
-  stroke(col("bord"));
-  strokeWeight(2);
-  line(cardX + 30, midY - 8, cardX + cardW - 30, midY - 8);
-  noStroke();
+  let buttonLabel = finalChips <= 0 ? "RESET GAME" : "PLAY AGAIN";
 
-  setFont(13, "ui");
-  fill(col("muted"));
-  text("FINAL CHIPS", midX, midY + 20);
+  if (finalChips <= 0) {
+    setFont(18, "ui");
+    fill(col("muted"));
+    textAlign(CENTER, TOP);
+    text("YOU LOST ALL YOUR MONEY!", midX, midY + 20);
+  } else {
+    let chipColor =
+      finalChips >= 100 ? "green" : finalChips >= 0 ? "amber" : "red";
+    setFont(13, "ui");
+    fill(col("muted"));
+    text("FINAL CHIPS", midX, midY + 20);
 
-  fill(col(chipColor));
-  setFont(64, "display");
-  text(finalChips, midX, midY + 65);
+    fill(col(chipColor));
+    setFont(64, "display");
+    text(finalChips, midX, midY + 70);
+  }
 
-  // Play Again button
+  // Reset button
   let bw = 220,
     bh = H_REVEAL;
   let bx = CW / 2 - bw / 2,
@@ -947,7 +986,7 @@ function drawGameOver() {
   fill(col("white"));
   setFont(24, "display");
   textAlign(CENTER, CENTER);
-  outlineText("PLAY AGAIN", CW / 2, by + bh / 2 - 1);
+  outlineText(buttonLabel, CW / 2, by + bh / 2 - 1);
 
   playAgainBtn = { x: bx, y: by, w: bw, h: bh };
 }
@@ -983,12 +1022,14 @@ function mousePressed() {
     return;
   }
   if (state === "GAME_OVER") {
-    if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) state = "SPLASH";
+    if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) fullReset();
     return;
   }
   if (state === "ACT_TRANSITION") return;
   updateHover();
   if (revealBtn && !revealBtn.disabled && inBtn(mouseX, mouseY, revealBtn)) {
+    stopAllGameSounds();
+    playRevealSound();
     startFlash();
     return;
   }
@@ -1002,6 +1043,7 @@ function mousePressed() {
           currentBet = b.realVal;
           allSelected = false;
         }
+        playDropCoinSound();
         setLog("Hit REVEAL when ready.", "muted");
         return;
       }
@@ -1010,6 +1052,7 @@ function mousePressed() {
   if (state === "ANSWER") {
     for (let b of answerBtns) {
       if (inBtn(mouseX, mouseY, b)) {
+        stopCountdownSound();
         handleAnswer(b.val);
         return;
       }
@@ -1042,7 +1085,6 @@ function fullReset() {
 function startFlash() {
   if (currentBet <= 0) return;
   lastBet = Math.abs(currentBet);
-  chips -= lastBet;
   let diff = getDiff();
 
   if (act === 1) {
@@ -1118,6 +1160,75 @@ function endFlash() {
   glitching = false;
   answerTimer = ANSWER_TIME;
   setLog(act === 1 ? "Pick your answer!" : "What was the sum?", "info");
+  playCountdownSound();
+}
+
+function stopAllGameSounds() {
+  [
+    countdownSound,
+    winSound,
+    loseSound,
+    jackpotSound,
+    levelUpSound,
+    dropCoinSound,
+  ].forEach((sound) => {
+    if (sound && sound.isLoaded() && sound.isPlaying()) {
+      sound.stop();
+    }
+  });
+}
+
+function stopCountdownSound() {
+  if (countdownSound && countdownSound.isLoaded() && countdownSound.isPlaying()) {
+    countdownSound.stop();
+  }
+}
+
+function playSound(sound) {
+  if (sound && sound.isLoaded()) {
+    stopAllGameSounds();
+    sound.playMode("restart");
+    sound.play();
+  }
+}
+
+function playCountdownSound() {
+  playSound(countdownSound);
+}
+
+function playWinSound() {
+  playSound(winSound);
+}
+
+function playLoseSound() {
+  playSound(loseSound);
+}
+
+function playJackpotSound() {
+  playSound(jackpotSound);
+}
+
+function playLevelUpSound() {
+  playSound(levelUpSound);
+}
+
+function playRevealSound() {
+  if (revealSound && revealSound.isLoaded()) {
+    revealSound.playMode("restart");
+    revealSound.play();
+  }
+}
+
+function playDropCoinSound() {
+  playSound(dropCoinSound);
+}
+
+function playFailTrumpetSound() {
+  if (failTrumpetSound && failTrumpetSound.isLoaded()) {
+    stopAllGameSounds();
+    failTrumpetSound.playMode("restart");
+    failTrumpetSound.play();
+  }
 }
 
 function handleAnswer(val) {
@@ -1127,24 +1238,36 @@ function handleAnswer(val) {
   if (act === 1) {
     if (val === correctAnswer) {
       let profit = floor(bet * diff.mult);
-      chips += bet + profit;
+      chips += profit;
       streak++;
       setLog("+" + profit + " chips! Correct!  (×" + diff.mult + ")", "good");
+      playJackpotSound();
     } else {
+      chips -= bet;
       streak = 0;
       setLog("-" + bet + " chips.  It was " + correctAnswer + ".", "bad");
+      if (chips > 0) playLoseSound();
     }
   } else {
     if (Math.abs(val - correctAnswer) === 0) {
       let profit = floor(bet * diff.mult);
-      chips += bet + profit;
+      chips += profit;
       streak++;
       setLog("+" + profit + " chips!  EXACT!  (×" + diff.mult + ")", "good");
+      playJackpotSound();
     } else {
+      chips -= bet;
       streak = 0;
       setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
+      if (chips > 0) playLoseSound();
     }
   }
+
+  if (chips <= 0) {
+    gameOverNow();
+    return;
+  }
+
   state = "RESULT";
   resultTimer = 2000;
 }
@@ -1156,19 +1279,44 @@ function handleTimeout() {
     "TIME'S UP! -" + lastBet + " chips.  It was " + correctAnswer + ".",
     "bad",
   );
+  chips -= lastBet;
+
+  if (chips > 0) playLoseSound();
+
+  if (chips <= 0) {
+    gameOverNow();
+    return;
+  }
+
   state = "RESULT";
   resultTimer = 2000;
+}
+
+function gameOverNow() {
+  stopAllGameSounds();
+  finalChips = chips;
+  if (finalChips <= 0) {
+    playFailTrumpetSound();
+  } else {
+    playLoseSound();
+  }
+  state = "GAME_OVER";
 }
 
 function nextRound() {
   let maxRounds = act === 1 ? 4 : 6;
   if (actRound >= maxRounds) {
     if (act === 1) {
+      stopAllGameSounds();
+      playLevelUpSound();
       state = "ACT_TRANSITION";
       transitionTimer = 3000;
       return;
     } else {
+      stopAllGameSounds();
       finalChips = chips;
+      if (finalChips > 0) playWinSound();
+      else playLoseSound();
       state = "GAME_OVER";
       return;
     }
@@ -1179,6 +1327,7 @@ function nextRound() {
 }
 
 function beginAct2() {
+  stopAllGameSounds();
   act = 2;
   actRound = 1;
   setLog("ACT II — Guess the sum of the numbers!", "special");
