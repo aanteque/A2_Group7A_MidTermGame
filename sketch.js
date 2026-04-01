@@ -24,6 +24,14 @@ const PAD = 20;
 const GAP = 14;
 const CW = 520;
 
+// Easy controls for stat icon sizing and spacing:
+const STAT_ICON_SCALE_CHIPS = 2.8; // scale for chips icon
+const STAT_ICON_SCALE_LEVEL = 1.7; // scale for level icon
+const STAT_ICON_SCALE_STREAK = 2.8; // scale for streak icon
+const STAT_ICON_PADDING = 7; // padding inside each stat column
+const STAT_GAP_CHIPS_LEVEL = 40; // horizontal gap between chips and level
+const STAT_GAP_LEVEL_STREAK = 40; // horizontal gap between level and streak
+
 const H_HEADER = 110;
 const H_STATS = 70;
 const H_ARENA = 210;
@@ -227,9 +235,17 @@ function drawCard(x, y, w, h, fillColor) {
 //  SETUP & DRAW
 // ═════════════════════════════════════════════════════════════════════════════
 let logoImg = null;
+let chipsImg = null;
+let levelImg = null;
+let streakImg = null;
 
 function preload() {
+  // Load the game logo and the three stat icons.
+  // Adjust the file names here if you rename or move the image files.
   logoImg = loadImage("assets/Calcusino_p.png");
+  chipsImg = loadImage("assets/images/Chips.png");
+  levelImg = loadImage("assets/images/Level.png");
+  streakImg = loadImage("assets/images/Streak.png");
 }
 
 function setup() {
@@ -317,47 +333,57 @@ function drawHeader() {
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStats() {
   let totalRounds = act === 1 ? 4 : 6;
-  let labels = ["CHIPS", "ROUND", "STREAK"];
+  let labels = ["CHIPS", "LEVEL", "STREAK"];
   let values = [chips, actRound + "/" + totalRounds, streak];
-  // [light colour, dark colour] for each box
-  let gradients = [
-    ["#1144B1", "#113789"],
-    ["#9C1DB0", "#650E73"],
-    ["#0C8B21", "#096C1A"],
+  // Individual spacing controls for the stat icons.
+  let boxGaps = [STAT_GAP_CHIPS_LEVEL, STAT_GAP_LEVEL_STREAK];
+  let statsWidth = CW - PAD * 2;
+  let statCellWidth = (statsWidth - (boxGaps[0] + boxGaps[1])) / 3;
+
+  let statIcons = [chipsImg, levelImg, streakImg];
+  let scaleFactors = [
+    STAT_ICON_SCALE_CHIPS,
+    STAT_ICON_SCALE_LEVEL,
+    STAT_ICON_SCALE_STREAK,
   ];
-  let cw3 = (CW - PAD * 2 - GAP * 2) / 3;
+
+  // Column left-edges; gaps are the extra horizontal spacing between the stat columns.
+  let statCellX = [
+    PAD,
+    PAD + statCellWidth + boxGaps[0],
+    PAD + statCellWidth * 2 + boxGaps[0] + boxGaps[1],
+  ];
 
   for (let i = 0; i < 3; i++) {
-    let x = PAD + i * (cw3 + GAP);
+    let x = statCellX[i];
+    let cellCenterX = x + statCellWidth / 2;
+    let icon = statIcons[i];
+    if (icon) {
+      let iconMaxW = (statCellWidth - STAT_ICON_PADDING) * scaleFactors[i];
+      let iconMaxH = (H_STATS - STAT_ICON_PADDING) * scaleFactors[i];
+      let imageRatio = icon.width / icon.height;
+      let drawW, drawH;
+      if (iconMaxW / iconMaxH > imageRatio) {
+        drawH = iconMaxH;
+        drawW = drawH * imageRatio;
+      } else {
+        drawW = iconMaxW;
+        drawH = drawW / imageRatio;
+      }
+      let imgX = x + (statCellWidth - drawW) / 2;
+      let imgY = Y_STATS + (H_STATS - drawH) / 2;
+      image(icon, imgX, imgY, drawW, drawH);
+    }
 
-    // gold border
-    fill(col("bord"));
-    noStroke();
-    rect(x - 3, Y_STATS - 3, cw3 + 6, H_STATS + 6, 4);
-
-    // diagonal gradient fill (top-left light → bottom-right dark)
-    let grad = drawingContext.createLinearGradient(
-      x,
-      Y_STATS,
-      x + cw3,
-      Y_STATS + H_STATS,
-    );
-    grad.addColorStop(0, gradients[i][0]);
-    grad.addColorStop(1, gradients[i][1]);
-    drawingContext.fillStyle = grad;
-    drawingContext.fillRect(x, Y_STATS, cw3, H_STATS);
-
-    // label
     fill(col("white"));
     setFont(12, "ui");
     textAlign(CENTER, TOP);
-    outlineText(labels[i], x + cw3 / 2, Y_STATS + 10);
+    outlineText(labels[i], cellCenterX, Y_STATS + 10);
 
-    // value
     fill(col("white"));
     setFont(34, "display");
     textAlign(CENTER, TOP);
-    outlineText(values[i], x + cw3 / 2, Y_STATS + 26);
+    outlineText(values[i], cellCenterX, Y_STATS + 26);
   }
 }
 
