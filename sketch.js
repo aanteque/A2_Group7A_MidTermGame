@@ -142,6 +142,14 @@ const PAD = 20;
 const GAP = 14;
 const CW  = 520;
 
+// Easy controls for stat icon sizing and spacing:
+const STAT_ICON_SCALE_CHIPS = 2.8; // scale for chips icon
+const STAT_ICON_SCALE_LEVEL = 1.7; // scale for level icon
+const STAT_ICON_SCALE_STREAK = 2.8; // scale for streak icon
+const STAT_ICON_PADDING = 7; // padding inside each stat column
+const STAT_GAP_CHIPS_LEVEL = 40; // horizontal gap between chips and level
+const STAT_GAP_LEVEL_STREAK = 40; // horizontal gap between level and streak
+
 const H_HEADER = 110;
 const H_STATS  = 70;
 const H_ARENA  = 210;
@@ -223,7 +231,7 @@ function getA1Diff() {
     { ms:  650*s, label: "BLURRED", mult: 2.5 },
     { ms:  380*s, label: "FUZZY",   mult: 3.5 },
   ];
-  return t[min(actRound - 1, t.length - 1)];
+  return applyDifficulty(t[min(actRound - 1, t.length - 1)]);
 }
 function getA2Diff() {
   const s = DIFF_SETTINGS[difficulty].timeScale;
@@ -235,7 +243,20 @@ function getA2Diff() {
     { ms: 3000*s, count: 4, scatter: true,  flipChance: 1.0, label: "FRENZY",   mult: 3.5 },
     { ms: 3000*s, count: 5, scatter: true,  flipChance: 1.0, label: "MAYHEM",   mult: 4.5 },
   ];
-  return t[min(actRound - 1, t.length - 1)];
+  return applyDifficulty(t[min(actRound - 1, t.length - 1)]);
+}
+
+function getDifficultySettings() {
+  return DIFF_SETTINGS[constrain(difficulty, 0, DIFF_SETTINGS.length - 1)];
+}
+
+function applyDifficulty(diff) {
+  let settings = getDifficultySettings();
+  return {
+    ...diff,
+    ms: max(200, floor(diff.ms * settings.timeScale)),
+    mult: parseFloat((diff.mult * settings.rewardMult).toFixed(2)),
+  };
 }
 function getDiff() { return act === 1 ? getA1Diff() : getA2Diff(); }
 
@@ -908,6 +929,96 @@ function drawActTransition() {
   fill(color(40,30,10)); noStroke(); rect(CW/2-bw/2,CH-76,bw,8,4);
   setShadow("rgba(220,155,10,0.8)",8); fill(col("amber")); noStroke();
   rect(CW/2-bw/2,CH-76,bw*elapsed,8,4); clearShadow();
+}
+
+function drawShop() {
+  background(col("bg"));
+  let cardX = PAD,
+    cardY = PAD,
+    cardW = CW - PAD * 2,
+    cardH = CH - PAD * 2;
+  drawCard(cardX, cardY, cardW, cardH);
+
+  setFont(28, "display");
+  fill(col("amber"));
+  textAlign(CENTER, TOP);
+  text("POWER-UP SHOP", CW / 2, cardY + 32);
+
+  shopBtns = [];
+  let itemY = cardY + 90;
+  let itemH = 92;
+  let itemW = cardW - PAD * 2;
+  let itemX = cardX + PAD;
+  let itemGap = 16;
+
+  const items = [
+    {
+      key: "streakShield",
+      title: "Streak Shield",
+      description: "Keep your streak after one miss.",
+      cost: 40,
+      owned: hasStreakShield,
+    },
+    {
+      key: "timeSurge",
+      title: "Time Surge",
+      description: "Extra answer time on the next round.",
+      cost: 30,
+      owned: hasTimeSurge,
+    },
+  ];
+
+  for (let item of items) {
+    drawCard(itemX, itemY, itemW, itemH, col("bg"));
+    fill(col("white"));
+    setFont(16, "display");
+    textAlign(LEFT, TOP);
+    text(item.title, itemX + 16, itemY + 14);
+
+    setFont(11, "ui");
+    fill(col("muted"));
+    text(item.description, itemX + 16, itemY + 42);
+
+    let statusText = item.owned ? "OWNED" : `COST: ${item.cost} chips`;
+    fill(item.owned ? col("green") : col("amber"));
+    setFont(12, "ui");
+    textAlign(RIGHT, TOP);
+    text(statusText, itemX + itemW - 16, itemY + 16);
+
+    if (!item.owned) {
+      let btnW = 100,
+        btnH = 28;
+      let btnX = itemX + itemW - btnW - 16,
+        btnY = itemY + itemH - btnH - 16;
+      drawCard(btnX, btnY, btnW, btnH, col("red"));
+      fill(col("white"));
+      setFont(12, "ui");
+      textAlign(CENTER, CENTER);
+      text("BUY", btnX + btnW / 2, btnY + btnH / 2);
+      shopBtns.push({ x: btnX, y: btnY, w: btnW, h: btnH, key: item.key });
+    }
+
+    itemY += itemH + itemGap;
+  }
+
+  let bw = 220,
+    bh = H_REVEAL;
+  let bx = CW / 2 - bw / 2,
+    by = itemY + 10;
+  fill(col("amber"));
+  noStroke();
+  rect(bx - 3, by - 3, bw + 6, bh + 6, 4);
+  fill(color(120, 12, 12));
+  noStroke();
+  rect(bx, by + 4, bw, bh, 2);
+  fill(col("red"));
+  noStroke();
+  rect(bx, by, bw, bh - 4, 2);
+  fill(col("white"));
+  setFont(20, "display");
+  textAlign(CENTER, CENTER);
+  outlineText("CONTINUE", CW / 2, by + bh / 2 - 1);
+  continueBtn = { x: bx, y: by, w: bw, h: bh };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
