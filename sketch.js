@@ -1,57 +1,80 @@
-/*
-Week 5 — Example 4: Data-driven world with JSON + Smooth Camera
+// CALCUCINO - p5.js  (Casino UI Restyle)
+// ACT 1: Tutorial  — 4 rounds, single number, remember & guess
+// ACT 2: Sum Blitz — 6 rounds, multiple scattered numbers, guess the sum
 
-Course: GBDA302 | Instructors: Dr. Karen Cochrane & David Han
-Date: Feb. 12, 2026
+// ── Colour palette (casino theme) ────────────────────────────────────────────
+const C = {
+  bg: [0, 0, 0], // pure black background
+  card: [28, 22, 60], // dark purple card fill
+  bord: [200, 140, 20], // gold/amber border
+  red: [176, 24, 24], // casino red #B01818
+  redHi: [210, 45, 45], // lighter red for hover
+  amber: [220, 155, 10], // gold
+  cyan: [17, 68, 177], // chips blue #1144B1
+  green: [12, 139, 33], // streak green #0C8B21
+  purple: [156, 29, 176], // round purple #9C1DB0
+  muted: [130, 110, 170], // muted purple-grey
+  text: [240, 235, 255], // near-white
+  white: [255, 255, 255],
+  shadow: [90, 30, 120],
+};
 
-Move: WASD/Arrows
+// ── Difficulty ────────────────────────────────────────────────────────────────
+let difficulty = 1;
+const DIFF_SETTINGS = [
+  {
+    label: "EASY",
+    color: "green",
+    desc: "Longer flash times. Forgiving.",
+    timeScale: 1.6,
+    rewardMult: 0.8,
+    choiceSpread: 8,
+  },
+  {
+    label: "NORMAL",
+    color: "amber",
+    desc: "Balanced. The intended experience.",
+    timeScale: 1.0,
+    rewardMult: 1,
+    choiceSpread: 5,
+  },
+  {
+    label: "HARD",
+    color: "red",
+    desc: "Brutal flash times. Tight choices.",
+    timeScale: 0.6,
+    rewardMult: 1.3,
+    choiceSpread: 2,
+  },
+];
+let diffBtns = [];
 
-Learning goals:
-- Extend the JSON-driven world to include camera parameters
-- Implement smooth camera follow using interpolation (lerp)
-- Separate camera behavior from player/world logic
-- Tune motion and feel using external data instead of hard-coded values
-- Maintain player visibility with soft camera clamping
-- Explore how small math changes affect “game feel”
-*/
+// ── Power-ups ─────────────────────────────────────────────────────────────────
+let hasStreakShield = false;
+let hasTimeSurge = false;
+let powerupFlash = null; // { label, colorKey, timer, duration }
+const FLASH_DUR = 1800;
 
-const VIEW_W = 800;
-const VIEW_H = 480;
+let shopBtns = [];
+let continueBtn = null;
 
-let worldData;
-let level;
-let player;
+let chipsImg = null;
+let levelImg = null;
+let streakImg = null;
+let countdownSound = null;
+let winSound = null;
+let loseSound = null;
+let jackpotSound = null;
+let levelUpSound = null;
+let dropCoinSound = null;
+let revealSound = null;
+let failTrumpetSound = null;
+let countdownSoundTimeout = null;
 
-let camX = 0;
-let camY = 0;
+// ── Win Confetti ──────────────────────────────────────────────────────────────
+let confettiParticles = [];
+const CONFETTI_COLS = ["amber", "green", "cyan", "purple", "red", "white"];
 
-<<<<<<< Updated upstream
-// images
-let enemyIMG;
-
-function preload() {
-  worldData = loadJSON("world.json"); // load JSON before setup [web:122]
-  
-  enemyIMG = loadImage('assets/images/ENEMY.png');
-}
-
-function setup() {
-  createCanvas(VIEW_W, VIEW_H);
-  textFont("sans-serif");
-  textSize(14);
-
-  level = new WorldLevel(worldData);
-
-  const start = worldData.playerStart ?? { x: 300, y: 300, speed: 3 };
-  player = new Player(start.x, start.y, start.speed);
-
-  camX = player.x - width / 2;
-  camY = player.y - height / 2;
-}
-
-function draw() {
-  player.updateInput();
-=======
 function spawnWinConfetti(bigWin) {
   confettiParticles = [];
   let count = bigWin ? 120 : 70;
@@ -435,48 +458,319 @@ function draw() {
   fill(0);
   drawKakegurui();
   rect(0, 0, CW, CH);
-  //background(col("bg"));
->>>>>>> Stashed changes
 
-  // Keep player inside world
-  player.x = constrain(player.x, 0, level.w);
-  player.y = constrain(player.y, 0, level.h);
+  if (state === "SPLASH") {
+    drawSplash();
+    return;
+  }
+  if (state === "GAME_OVER") {
+    drawGameOver();
+    return;
+  }
+  if (state === "SHOP") {
+    drawShop();
+    return;
+  }
+  if (state === "ACT_TRANSITION") {
+    drawActTransition();
+    transitionTimer -= deltaTime;
+    if (transitionTimer <= 0) beginAct2();
+    return;
+  }
 
-  // Target camera (center on player)
-  let targetX = player.x - width / 2;
-  let targetY = player.y - height / 2;
+  drawHeader();
+  drawStats();
+  drawArena();
+  drawBetSection();
+  drawLog();
+  drawRevealBtn();
 
-  // Clamp target camera safely
-  const maxCamX = max(0, level.w - width);
-  const maxCamY = max(0, level.h - height);
-  targetX = constrain(targetX, 0, maxCamX);
-  targetY = constrain(targetY, 0, maxCamY);
+  // timers
+  if (state === "FLASH") {
+    flashTimer -= deltaTime;
+    if (flashTimer <= 0) endFlash();
+    if (flashTimer < flashDuration * 0.3) glitching = true;
+  }
+  if (state === "ANSWER") {
+    answerTimer -= deltaTime;
+    if (answerTimer <= 0) handleTimeout();
+  }
+  if (state === "RESULT") {
+    resultTimer -= deltaTime;
+    if (resultTimer <= 0) nextRound();
+  }
 
-  // Smooth follow using the JSON knob
-  const camLerp = level.camLerp; // ← data-driven now
-  camX = lerp(camX, targetX, camLerp);
-  camY = lerp(camY, targetY, camLerp);
+  if (state === "BET" && currentBet === 0) {
+    wagerPulse = (sin(frameCount * 0.07) + 1) / 2;
+  } else {
+    wagerPulse = 0;
+  }
 
-  level.drawBackground();
-
-  push();
-  translate(-camX, -camY);
-  level.drawWorld();
-  player.draw();
-  pop();
-
-  level.drawHUD(player, camX, camY);
-  level.obstacleInteraction(player);
+  let targetFill = revealHover && !revealBtn?.disabled ? 1 : 0;
+  revealFill += (targetFill - revealFill) * 0.15;
 }
 
-function keyPressed() {
-  if (key === "r" || key === "R") {
-    const start = worldData.playerStart ?? { x: 300, y: 300, speed: 3 };
-    player = new Player(start.x, start.y, start.speed);
+// ═════════════════════════════════════════════════════════════════════════════
+//  HEADER  — logo image
+// ═════════════════════════════════════════════════════════════════════════════
+function drawHeader() {
+  let ty = Y_HEADER;
+  if (logoImg) {
+    // scale to fit width with padding, preserve aspect ratio
+    let imgW = CW - PAD * 2;
+    let imgH = imgW * (logoImg.height / logoImg.width);
+    image(logoImg, PAD, ty, imgW, imgH);
+  }
+
+  // act subtitle
+  setFont(12, "ui");
+  fill(col("muted"));
+  textAlign(CENTER, TOP);
+  text(
+    act === 1
+      ? "ACT I  —  TUTORIAL: Remember the number"
+      : "ACT II —  SUM BLITZ: Guess the total",
+    CW / 2,
+    ty + 86,
+  );
+
+  let diff = getDifficultySettings();
+  setFont(10, "ui");
+  fill(col("muted"));
+  textAlign(CENTER, TOP);
+  text(`DIFFICULTY: ${diff.label}`, CW / 2, ty + 106);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  STATS — coloured filled boxes with gold borders
+// ═════════════════════════════════════════════════════════════════════════════
+function drawStats() {
+  let totalRounds = act === 1 ? 4 : 6;
+  let labels = ["CHIPS", "LEVEL", "STREAK"];
+  let values = [chips, actRound + "/" + totalRounds, streak];
+  // Individual spacing controls for the stat icons.
+  let boxGaps = [STAT_GAP_CHIPS_LEVEL, STAT_GAP_LEVEL_STREAK];
+  let statsWidth = CW - PAD * 2;
+  let statCellWidth = (statsWidth - (boxGaps[0] + boxGaps[1])) / 3;
+
+  let statIcons = [chipsImg, levelImg, streakImg];
+  let scaleFactors = [
+    STAT_ICON_SCALE_CHIPS,
+    STAT_ICON_SCALE_LEVEL,
+    STAT_ICON_SCALE_STREAK,
+  ];
+
+  // Column left-edges; gaps are the extra horizontal spacing between the stat columns.
+  let statCellX = [
+    PAD,
+    PAD + statCellWidth + boxGaps[0],
+    PAD + statCellWidth * 2 + boxGaps[0] + boxGaps[1],
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    let x = statCellX[i];
+    let cellCenterX = x + statCellWidth / 2;
+    let icon = statIcons[i];
+    if (icon) {
+      let iconMaxW = (statCellWidth - STAT_ICON_PADDING) * scaleFactors[i];
+      let iconMaxH = (H_STATS - STAT_ICON_PADDING) * scaleFactors[i];
+      let imageRatio = icon.width / icon.height;
+      let drawW, drawH;
+      if (iconMaxW / iconMaxH > imageRatio) {
+        drawH = iconMaxH;
+        drawW = drawH * imageRatio;
+      } else {
+        drawW = iconMaxW;
+        drawH = drawW / imageRatio;
+      }
+      let imgX = x + (statCellWidth - drawW) / 2;
+      let imgY = Y_STATS + (H_STATS - drawH) / 2;
+      image(icon, imgX, imgY, drawW, drawH);
+    }
+
+    fill(col("white"));
+    setFont(12, "ui");
+    textAlign(CENTER, TOP);
+    outlineText(labels[i], cellCenterX, Y_STATS + 10);
+
+    fill(col("white"));
+    setFont(34, "display");
+    textAlign(CENTER, TOP);
+    outlineText(values[i], cellCenterX, Y_STATS + 26);
   }
 }
-<<<<<<< Updated upstream
-=======
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  ARENA
+// ═════════════════════════════════════════════════════════════════════════════
+function drawArena() {
+  let ax = PAD,
+    aw = CW - PAD * 2;
+  drawCard(ax, Y_ARENA, aw, H_ARENA);
+  let diff = getDiff();
+  answerBtns = [];
+
+  fill(col("muted"));
+  setFont(10, "ui");
+  textAlign(LEFT, TOP);
+  text(
+    (act === 1 ? "ACT I" : "ACT II") + "  RND " + actRound,
+    ax + 12,
+    Y_ARENA + 10,
+  );
+
+  textAlign(RIGHT, TOP);
+  fill(col("amber"));
+  setFont(14, "display");
+  text("×" + diff.mult, ax + aw - 12, Y_ARENA + 10);
+
+  fill(col("muted"));
+  setFont(10, "ui");
+  textAlign(RIGHT, BOTTOM);
+  text(diff.label, ax + aw - 12, Y_ARENA + H_ARENA - 10);
+
+  if (state === "BET") {
+    fill(col("muted"));
+    setFont(12, "ui");
+    textAlign(CENTER, CENTER);
+    text(
+      act === 1
+        ? "Place your bet,\nthen reveal the number."
+        : "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM.",
+      ax + aw / 2,
+      Y_ARENA + H_ARENA / 2,
+    );
+  }
+
+  if (state === "ANSWER" || state === "RESULT") {
+    // Draw answer buttons inside the arena
+    let gap = 8,
+      bw = (aw - 32 - gap * 3) / 4,
+      bh = 52;
+    let bx = ax + 16;
+    let by = Y_ARENA + H_ARENA / 2 - bh / 2;
+
+    for (let i = 0; i < 4; i++) {
+      let val = choices[i] !== undefined ? choices[i] : null;
+      let btnState = "idle";
+      if (state === "RESULT" && val !== null) {
+        if (val === correctAnswer) btnState = "correct";
+        else if (val === selectedAnswer) btnState = "wrong";
+      }
+      let hovered = answerHover === i && state === "ANSWER";
+      answerBtns.push({ x: bx, y: by, w: bw, h: bh, val });
+      if (val !== null)
+        drawAnswerBtn(bx, by, bw, bh, val, btnState, hovered, 255);
+      bx += bw + gap;
+    }
+
+    if (state === "ANSWER") {
+      let pct = constrain(answerTimer / ANSWER_TIME, 0, 1);
+      let urgent = pct < 0.35;
+      let bc = urgent ? col("red") : col("amber");
+      let barRgb = urgent ? "210,35,45" : "220,155,10";
+      fill(color(40, 30, 10));
+      noStroke();
+      rect(ax, Y_ARENA + H_ARENA - 5, aw, 5);
+      setShadow(`rgba(${barRgb},0.8)`, urgent ? 10 : 6);
+      fill(bc);
+      noStroke();
+      rect(ax, Y_ARENA + H_ARENA - 5, aw * pct, 5);
+      clearShadow();
+    }
+  }
+
+  if (state === "FLASH") {
+    let pct01 = constrain(flashTimer / flashDuration, 0, 1);
+    let fadeA = map(flashTimer, 0, flashDuration * 0.12, 0, 255);
+    fadeA = constrain(fadeA, 0, 255);
+
+    if (act === 1) drawAct1Flash(ax, aw, fadeA);
+    else drawAct2Flash(ax, aw, fadeA);
+
+    let bc = pct01 < 0.3 ? col("red") : col("amber");
+    let barRgb = pct01 < 0.3 ? "210,35,45" : "220,155,10";
+    setShadow(`rgba(${barRgb},0.8)`, 8);
+    fill(bc);
+    noStroke();
+    rect(ax, Y_ARENA + H_ARENA - 3, aw * pct01, 3);
+    clearShadow();
+  }
+}
+
+function drawAct1Flash(ax, aw, fadeA) {
+  let cx = act1Pos.x,
+    cy = act1Pos.y;
+  let a01 = fadeA / 255;
+  let ox = 0,
+    oy = 0;
+  if (glitching && frameCount % 3 === 0) {
+    ox = random(-6, 6);
+    oy = random(-3, 3);
+  }
+  let isH = flipType === 1 || flipType === 3;
+  let isV = flipType === 2 || flipType === 3;
+
+  push();
+  translate(cx + ox, cy + oy);
+  if (isH) scale(-1, 1);
+  if (isV) scale(1, -1);
+
+  setShadow(`rgba(210,35,45,${(a01 * 0.6).toFixed(2)})`, 30);
+  fill(col("red", fadeA));
+  setFont(120, "display");
+  textAlign(CENTER, CENTER);
+  text(correctAnswer, 0, 0);
+  clearShadow();
+  pop();
+}
+
+function drawAct2Flash(ax, aw, fadeA) {
+  let a01 = fadeA / 255;
+  let diff = getA2Diff();
+  const hues = [
+    "255,255,255",
+    "80,160,255",
+    "200,100,255",
+    "220,155,10",
+    "60,200,100",
+  ];
+  let sz = diff.count <= 2 ? 90 : diff.count <= 3 ? 72 : 56;
+
+  for (let i = 0; i < sumNumbers.length; i++) {
+    let pos = numPositions[i];
+    if (!pos) continue;
+    let wobble = diff.scatter ? sin(frameCount * 0.08 + i * 1.3) * 4 : 0;
+    let nx = ax + pos.x + wobble;
+    let ny =
+      Y_ARENA +
+      pos.y +
+      cos(frameCount * 0.06 + i * 0.9) * (diff.scatter ? 3 : 0);
+    let ox = 0,
+      oy = 0;
+    if (glitching && frameCount % 3 === 0) {
+      ox = random(-4, 4);
+      oy = random(-2, 2);
+    }
+
+    let ft = numFlips[i] || 0;
+    let isH = ft === 1 || ft === 3;
+    let isV = ft === 2 || ft === 3;
+    let h = ft !== 0 ? "210,35,45" : hues[i % hues.length];
+
+    push();
+    translate(nx + ox, ny + oy);
+    if (isH) scale(-1, 1);
+    if (isV) scale(1, -1);
+    setShadow(`rgba(${h},${(a01 * 0.55).toFixed(2)})`, 20);
+    fill(color(...h.split(",").map(Number), fadeA));
+    setFont(sz, "display");
+    textAlign(CENTER, CENTER);
+    text(sumNumbers[i], 0, 0);
+    clearShadow();
+    pop();
+  }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  KAKEGURUI CHAN SPEECHBUBBLE
@@ -732,7 +1026,6 @@ function drawRevealBtn() {
 // ═════════════════════════════════════════════════════════════════════════════
 function drawActTransition() {
   rect(0, 0, CW, CH);
-  //background(col("bg"));
 
   let fadeIn = constrain(map(transitionTimer, 3000, 2400, 0, 255), 0, 255);
   let elapsed = 1 - transitionTimer / 3000;
@@ -775,7 +1068,6 @@ function drawActTransition() {
 
 function drawShop() {
   rect(0, 0, CW, CH);
-  //background(col("bg"));
   let cardX = PAD,
     cardY = PAD,
     cardW = CW - PAD * 2,
@@ -1631,4 +1923,3 @@ function setLog(msg, type) {
   logMsg = msg;
   logType = type || "muted";
 }
->>>>>>> Stashed changes
