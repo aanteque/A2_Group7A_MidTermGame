@@ -1,6 +1,7 @@
 // CALCUCINO - p5.js  (Casino UI Restyle)
 // ACT 1: Tutorial  — 4 rounds, single number, remember & guess
 // ACT 2: Sum Blitz — 6 rounds, multiple scattered numbers, guess the sum
+// THIS IS MAIN (merged with title screen)
 
 // ── Colour palette (casino theme) ────────────────────────────────────────────
 const C = {
@@ -78,11 +79,9 @@ const CONFETTI_COLS = ["amber", "green", "cyan", "purple", "red", "white"];
 function spawnWinConfetti(bigWin) {
   confettiParticles = [];
   let count = bigWin ? 120 : 70;
-  // Left cannon
   for (let i = 0; i < count / 2; i++) {
     confettiParticles.push(makeChip(PAD + 10, CH * 0.55, true));
   }
-  // Right cannon
   for (let i = 0; i < count / 2; i++) {
     confettiParticles.push(makeChip(CW - PAD - 10, CH * 0.55, false));
   }
@@ -90,8 +89,8 @@ function spawnWinConfetti(bigWin) {
 
 function makeChip(x, y, goRight) {
   let angle = goRight
-    ? random(-PI * 0.85, -PI * 0.15) // fires left→up→right
-    : random(-PI * 0.85, -PI * 0.15); // mirror handled via speed sign
+    ? random(-PI * 0.85, -PI * 0.15)
+    : random(-PI * 0.85, -PI * 0.15);
   let spd = random(6, 14);
   let col_key = CONFETTI_COLS[floor(random(CONFETTI_COLS.length))];
   let isCircle = random() > 0.5;
@@ -136,9 +135,7 @@ function updateDrawConfetti() {
     if (p.isCircle) {
       ellipse(0, 0, p.sz * 0.8, p.sz);
     } else {
-      // chip-like rectangle
       rect(-p.sz / 2, -p.sz * 0.35, p.sz, p.sz * 0.7, 2);
-      // shine line
       fill(color(255, 255, 255, a * 0.4));
       rect(-p.sz * 0.3, -p.sz * 0.25, p.sz * 0.15, p.sz * 0.5, 1);
     }
@@ -188,13 +185,12 @@ const PAD = 20;
 const GAP = 14;
 const CW = 520;
 
-// Easy controls for stat icon sizing and spacing:
-const STAT_ICON_SCALE_CHIPS = 2.8; // scale for chips icon
-const STAT_ICON_SCALE_LEVEL = 1.7; // scale for level icon
-const STAT_ICON_SCALE_STREAK = 2.8; // scale for streak icon
-const STAT_ICON_PADDING = 7; // padding inside each stat column
-const STAT_GAP_CHIPS_LEVEL = 40; // horizontal gap between chips and level
-const STAT_GAP_LEVEL_STREAK = 40; // horizontal gap between level and streak
+const STAT_ICON_SCALE_CHIPS = 2.8;
+const STAT_ICON_SCALE_LEVEL = 1.7;
+const STAT_ICON_SCALE_STREAK = 2.8;
+const STAT_ICON_PADDING = 7;
+const STAT_GAP_CHIPS_LEVEL = 40;
+const STAT_GAP_LEVEL_STREAK = 40;
 
 const H_HEADER = 110;
 const H_STATS = 70;
@@ -241,7 +237,7 @@ let sumNumbers = [],
   numPositions = [],
   numFlips = [];
 let act1Pos = { x: 0, y: 0 };
-let state = "SPLASH";
+let state = "TITLE"; // <-- starts at TITLE now
 let isMirrored = false;
 let flipType = 0;
 
@@ -281,6 +277,13 @@ let lastBet = 0;
 let wagerPulse = 0;
 let kakeguruiChan = [];
 let textContent = "hello my name is kakegurui chan! welcome to my casino.";
+
+// ── Title screen state ────────────────────────────────────────────────────────
+let titleImg1 = null;
+let titleImg2 = null;
+let titlePressed = false;
+let titlePressTimer = 0;
+const TITLE_PRESS_HOLD = 800;
 
 // ── Difficulty ────────────────────────────────────────────────────────────────
 function getA1Diff() {
@@ -386,8 +389,6 @@ function setFont(size, style) {
   }
 }
 
-// ── Outlined text helper ──────────────────────────────────────────────────────
-// Draws text with a 2px black outline. Call with fill() already set to white.
 function outlineText(str, x, y) {
   clearShadow();
   drawingContext.lineJoin = "round";
@@ -398,13 +399,10 @@ function outlineText(str, x, y) {
   text(str, x, y);
 }
 
-// ── Gold border card ──────────────────────────────────────────────────────────
 function drawCard(x, y, w, h, fillColor) {
-  // outer gold border
   fill(col("bord"));
   noStroke();
   rect(x - 3, y - 3, w + 6, h + 6, 4);
-  // inner fill
   fill(fillColor || col("card"));
   noStroke();
   rect(x, y, w, h, 2);
@@ -417,6 +415,8 @@ let logoImg = null;
 
 function preload() {
   logoImg = loadImage("assets/Calcusino_p.png");
+  titleImg1 = loadImage("assets/clcutitle_pg1.png");
+  titleImg2 = loadImage("assets/clcutitle_pg2.png");
   chipsImg = loadImage("assets/images/Chips.png");
   levelImg = loadImage("assets/images/Level.png");
   streakImg = loadImage("assets/images/Streak.png");
@@ -459,6 +459,19 @@ function draw() {
   drawKakegurui();
   rect(0, 0, CW, CH);
 
+  // ── TITLE ──
+  if (state === "TITLE") {
+    drawTitle();
+    if (titlePressed) {
+      titlePressTimer -= deltaTime;
+      if (titlePressTimer <= 0) {
+        titlePressed = false;
+        state = "SPLASH";
+      }
+    }
+    return;
+  }
+
   if (state === "SPLASH") {
     drawSplash();
     return;
@@ -485,7 +498,6 @@ function draw() {
   drawLog();
   drawRevealBtn();
 
-  // timers
   if (state === "FLASH") {
     flashTimer -= deltaTime;
     if (flashTimer <= 0) endFlash();
@@ -511,18 +523,39 @@ function draw() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  TITLE SCREEN  — pg1 idle, pg2 on press, then → SPLASH
+// ═════════════════════════════════════════════════════════════════════════════
+function drawTitle() {
+  let img = titlePressed ? titleImg2 : titleImg1;
+  if (img) {
+    let scale = min(CW / img.width, CH / img.height);
+    let dw = img.width * scale;
+    let dh = img.height * scale;
+    let dx = (CW - dw) / 2;
+    let dy = (CH - dh) / 2;
+    image(img, dx, dy, dw, dh);
+  } else {
+    fill(col("white"));
+    setFont(32, "display");
+    textAlign(CENTER, CENTER);
+    text("CALCUSINO", CW / 2, CH / 2 - 20);
+    setFont(14, "ui");
+    fill(col("muted"));
+    text("PRESS TO START", CW / 2, CH / 2 + 24);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  HEADER  — logo image
 // ═════════════════════════════════════════════════════════════════════════════
 function drawHeader() {
   let ty = Y_HEADER;
   if (logoImg) {
-    // scale to fit width with padding, preserve aspect ratio
     let imgW = CW - PAD * 2;
     let imgH = imgW * (logoImg.height / logoImg.width);
     image(logoImg, PAD, ty, imgW, imgH);
   }
 
-  // act subtitle
   setFont(12, "ui");
   fill(col("muted"));
   textAlign(CENTER, TOP);
@@ -542,13 +575,12 @@ function drawHeader() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  STATS — coloured filled boxes with gold borders
+//  STATS
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStats() {
   let totalRounds = act === 1 ? 4 : 6;
   let labels = ["CHIPS", "LEVEL", "STREAK"];
   let values = [chips, actRound + "/" + totalRounds, streak];
-  // Individual spacing controls for the stat icons.
   let boxGaps = [STAT_GAP_CHIPS_LEVEL, STAT_GAP_LEVEL_STREAK];
   let statsWidth = CW - PAD * 2;
   let statCellWidth = (statsWidth - (boxGaps[0] + boxGaps[1])) / 3;
@@ -560,7 +592,6 @@ function drawStats() {
     STAT_ICON_SCALE_STREAK,
   ];
 
-  // Column left-edges; gaps are the extra horizontal spacing between the stat columns.
   let statCellX = [
     PAD,
     PAD + statCellWidth + boxGaps[0],
@@ -643,7 +674,6 @@ function drawArena() {
   }
 
   if (state === "ANSWER" || state === "RESULT") {
-    // Draw answer buttons inside the arena
     let gap = 8,
       bw = (aw - 32 - gap * 3) / 4,
       bh = 52;
@@ -787,6 +817,10 @@ function drawKakegurui() {
   textSize(20);
   text(textContent, CW + 100, 150, textX, textY);
 
+  if (state === "TITLE") {
+    image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+    textContent = "hello my name is kakegurui chan! welcome to my casino.";
+  }
   if (state === "SPLASH") {
     if (difficulty === 0) {
       image(kakeguruiChan[3], CW, CH - 400, 400, 400);
@@ -859,7 +893,6 @@ function drawBetSection() {
     w = CW - PAD * 2;
   drawCard(x, Y_BET, w, H_BET);
 
-  // WAGER! label — bold white, casino style
   fill(col("white"));
   setFont(18, "display");
   textAlign(CENTER, TOP);
@@ -895,7 +928,6 @@ function drawBetSection() {
 
 function drawChipBtn(x, y, w, h, label, active, disabled) {
   if (disabled) {
-    // dim state
     fill(color(120, 12, 12));
     noStroke();
     rect(x, y, w, h, 2);
@@ -903,15 +935,12 @@ function drawChipBtn(x, y, w, h, label, active, disabled) {
     noStroke();
     rect(x, y, w, h - 4, 2);
   } else {
-    // gold outer border
     fill(active ? col("amber") : col("bord"));
     noStroke();
     rect(x - 2, y - 2, w + 4, h + 4, 4);
-    // red fill (bottom shadow layer)
     fill(active ? color(160, 100, 0) : color(120, 12, 12));
     noStroke();
     rect(x, y + 3, w, h - 1, 2);
-    // red fill (main)
     fill(active ? color(200, 140, 0) : col("red"));
     noStroke();
     rect(x, y, w, h - 3, 2);
@@ -947,20 +976,16 @@ function drawAnswerBtn(x, y, w, h, val, btnState, hovered, alpha) {
     fillBot = color(110, 10, 10, alpha);
   }
 
-  // border
   fill(borderC);
   noStroke();
   rect(x - 2, y - 2, w + 4, h + 4, 4);
-  // shadow bottom
   fill(fillBot);
   noStroke();
   rect(x, y + 3, w, h - 1, 2);
-  // main fill
   fill(fillTop);
   noStroke();
   rect(x, y, w, h - 3, 2);
 
-  // number
   fill(col("white", alpha));
   setFont(28, "display");
   textAlign(CENTER, CENTER);
@@ -986,7 +1011,7 @@ function drawLog() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  REVEAL / START button — casino red with gold border
+//  REVEAL BUTTON
 // ═════════════════════════════════════════════════════════════════════════════
 function drawRevealBtn() {
   let x = PAD,
@@ -995,15 +1020,12 @@ function drawRevealBtn() {
   let disabled = state !== "BET" || currentBet === 0;
 
   if (!disabled) {
-    // gold border
     fill(col("amber"));
     noStroke();
     rect(x - 3, Y_REVEAL - 3, w + 6, h + 6, 4);
-    // bottom shadow
     fill(color(120, 12, 12));
     noStroke();
     rect(x, Y_REVEAL + 4, w, h, 2);
-    // main fill
     fill(revealHover ? col("redHi") : col("red"));
     noStroke();
     rect(x, Y_REVEAL, w, h - 4, 2);
@@ -1032,7 +1054,6 @@ function drawActTransition() {
 
   textAlign(CENTER, CENTER);
 
-  // purple shadow offset
   fill(col("shadow", fadeIn));
   setFont(90, "display");
   text("ACT  II", CW / 2 + 5, CH / 2 - 55);
@@ -1066,6 +1087,9 @@ function drawActTransition() {
   clearShadow();
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  SHOP
+// ═════════════════════════════════════════════════════════════════════════════
 function drawShop() {
   rect(0, 0, CW, CH);
   let cardX = PAD,
@@ -1160,7 +1184,6 @@ function drawShop() {
 //  SPLASH SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
 function drawSplash() {
-  // Logo image
   if (logoImg) {
     let imgW = CW - PAD * 2;
     let imgH = imgW * (logoImg.height / logoImg.width);
@@ -1172,7 +1195,6 @@ function drawSplash() {
   textAlign(CENTER, TOP);
   text("A game about numbers you can't trust", CW / 2, Y_HEADER + 86);
 
-  // How-to-play card
   let cx = PAD,
     cw = CW - PAD * 2,
     cy = Y_STATS,
@@ -1252,7 +1274,6 @@ function drawSplash() {
     }
   }
 
-  // Difficulty selection
   let diffLabelY = lineY + 20;
   setFont(16, "display");
   fill(color(31, 191, 255));
@@ -1285,7 +1306,6 @@ function drawSplash() {
   textAlign(CENTER, TOP);
   text(DIFF_SETTINGS[difficulty].desc, CW / 2, diffY + dbH + 12);
 
-  // START button
   let bw = 240,
     bh = H_REVEAL;
   let bx = CW / 2 - bw / 2,
@@ -1353,7 +1373,6 @@ function drawGameOver() {
     text(finalChips, midX, midY + 70);
   }
 
-  // Reset button
   let bw = 220,
     bh = H_REVEAL;
   let bx = CW / 2 - bw / 2,
@@ -1389,7 +1408,12 @@ function mouseDragged() {
 }
 
 function updateHover() {
-  if (state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION")
+  if (
+    state === "TITLE" ||
+    state === "SPLASH" ||
+    state === "GAME_OVER" ||
+    state === "ACT_TRANSITION"
+  )
     return;
   revealHover = revealBtn ? inBtn(mouseX, mouseY, revealBtn) : false;
   answerHover = -1;
@@ -1404,6 +1428,14 @@ function updateHover() {
 }
 
 function mousePressed() {
+  // ── TITLE ──
+  if (state === "TITLE") {
+    if (!titlePressed) {
+      titlePressed = true;
+      titlePressTimer = TITLE_PRESS_HOLD;
+    }
+    return;
+  }
   if (state === "SPLASH") {
     for (let b of diffBtns) {
       if (inBtn(mouseX, mouseY, b)) {
@@ -1433,7 +1465,7 @@ function mousePressed() {
     if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) {
       stopAllGameSounds();
       playAgainBtn = null;
-      state = "SPLASH";
+      state = "TITLE"; // return to title screen
     }
     return;
   }
@@ -1477,7 +1509,7 @@ function inBtn(mx, my, b) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GAME LOGIC  (unchanged from original)
+//  GAME LOGIC
 // ═════════════════════════════════════════════════════════════════════════════
 function fullReset() {
   chips = 50;
