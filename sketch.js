@@ -414,8 +414,8 @@ function drawCard(x, y, w, h, fillColor) {
 let logoImg = null;
 let titleImg1 = null; // idle title screen (pg1)
 let titleImg2 = null; // pressed title screen (pg2)
-let titlePressed = false;    // tracks whether the button has been pressed
-let titlePressTimer = 0;     // ms to hold pg2 before switching to SPLASH
+let titlePressed = false; // tracks whether the button has been pressed
+let titlePressTimer = 0; // ms to hold pg2 before switching to SPLASH
 const TITLE_PRESS_HOLD = 800; // how long pg2 shows before transitioning
 
 function preload() {
@@ -1345,7 +1345,12 @@ function mouseDragged() {
 }
 
 function updateHover() {
-  if (state === "TITLE" || state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION")
+  if (
+    state === "TITLE" ||
+    state === "SPLASH" ||
+    state === "GAME_OVER" ||
+    state === "ACT_TRANSITION"
+  )
     return;
   revealHover = revealBtn ? inBtn(mouseX, mouseY, revealBtn) : false;
   answerHover = -1;
