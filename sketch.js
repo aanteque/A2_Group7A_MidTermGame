@@ -1,7 +1,7 @@
 // CALCUCINO - p5.js  (Casino UI Restyle)
 // ACT 1: Tutorial  — 4 rounds, single number, remember & guess
 // ACT 2: Sum Blitz — 6 rounds, multiple scattered numbers, guess the sum
-// test
+
 // ── Colour palette (casino theme) ────────────────────────────────────────────
 const C = {
   bg: [0, 0, 0], // pure black background
@@ -241,7 +241,7 @@ let sumNumbers = [],
   numPositions = [],
   numFlips = [];
 let act1Pos = { x: 0, y: 0 };
-let state = "TITLE";
+let state = "SPLASH";
 let isMirrored = false;
 let flipType = 0;
 
@@ -279,6 +279,8 @@ let answerH = H_ANSWER_COLLAPSED;
 let allSelected = false;
 let lastBet = 0;
 let wagerPulse = 0;
+let kakeguruiChan = [];
+let textContent = "hello my name is kakegurui chan! welcome to my casino.";
 
 // ── Difficulty ────────────────────────────────────────────────────────────────
 function getA1Diff() {
@@ -412,19 +414,16 @@ function drawCard(x, y, w, h, fillColor) {
 //  SETUP & DRAW
 // ═════════════════════════════════════════════════════════════════════════════
 let logoImg = null;
-let titleImg1 = null; // idle title screen (pg1)
-let titleImg2 = null; // pressed title screen (pg2)
-let titlePressed = false; // tracks whether the button has been pressed
-let titlePressTimer = 0; // ms to hold pg2 before switching to SPLASH
-const TITLE_PRESS_HOLD = 800; // how long pg2 shows before transitioning
 
 function preload() {
   logoImg = loadImage("assets/Calcusino_p.png");
-  titleImg1 = loadImage("assets/clcutitle_pg1.png");
-  titleImg2 = loadImage("assets/clcutitle_pg2.png");
   chipsImg = loadImage("assets/images/Chips.png");
   levelImg = loadImage("assets/images/Level.png");
   streakImg = loadImage("assets/images/Streak.png");
+  kakeguruiChan[0] = loadImage("assets/images/kakegurui chan.png");
+  kakeguruiChan[1] = loadImage("assets/images/KAKEGURUIMASHOOO!.png");
+  kakeguruiChan[2] = loadImage("assets/images/kakegurui chan happy.png");
+  kakeguruiChan[3] = loadImage("assets/images/kakegurui chan pity.png");
 
   countdownSound = loadSound(
     "assets/sounds/lesiakower-countdown-sound-effect-8-bit-151797.mp3",
@@ -451,24 +450,15 @@ function preload() {
 }
 
 function setup() {
-  createCanvas(CW, CH);
+  createCanvas(CW + 400, CH);
   textFont("Impact");
 }
 
 function draw() {
-  background(col("bg"));
+  fill(0);
+  drawKakegurui();
+  rect(0, 0, CW, CH);
 
-  if (state === "TITLE") {
-    drawTitle();
-    if (titlePressed) {
-      titlePressTimer -= deltaTime;
-      if (titlePressTimer <= 0) {
-        titlePressed = false;
-        state = "SPLASH";
-      }
-    }
-    return;
-  }
   if (state === "SPLASH") {
     drawSplash();
     return;
@@ -783,6 +773,85 @@ function drawAct2Flash(ax, aw, fadeA) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  KAKEGURUI CHAN SPEECHBUBBLE
+// ═════════════════════════════════════════════════════════════════════════════
+function drawKakegurui() {
+  clear();
+  fill(255);
+  ellipse(CW + 200, 200, 300, 150);
+  triangle(CW + 180, 190, CW + 220, 190, CW + 200, 300);
+  fill(0);
+  textAlign(CENTER);
+  let textX = 200;
+  let textY = 100;
+  textSize(20);
+  text(textContent, CW + 100, 150, textX, textY);
+
+  if (state === "SPLASH") {
+    if (difficulty === 0) {
+      image(kakeguruiChan[3], CW, CH - 400, 400, 400);
+      textContent = "Whaaaat? easy mode? how am I supposed to bankrupt you?";
+    } else if (difficulty === 2) {
+      image(kakeguruiChan[1], CW, CH - 400, 400, 400);
+      textContent = "NOW WE ARE TALKING! let the madness begin!";
+    } else {
+      image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+      textContent = "Hello my name is kakegurui chan! welcome to my casino.";
+    }
+  }
+  if (state === "GAME_OVER") {
+    if (chips === 0) {
+      image(kakeguruiChan[2], CW, CH - 400, 400, 400);
+      textContent = "Oh no! anyways, thank you for your patronage!";
+    } else if (chips > 500 && chips < 1000) {
+      image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+      textContent = "Not a bad haul! You should try more!";
+    } else if (chips > 1000 && chips < 2000) {
+      image(kakeguruiChan[2], CW, CH - 400, 400, 400);
+      textContent = "That's some good earnings!";
+    } else if (chips > 2000 && chips < 5000) {
+      image(kakeguruiChan[1], CW, CH - 400, 400, 400);
+      textContent = "Now, don't you crave for some more?";
+    } else if (chips > 5000 && chips < 10000) {
+      image(kakeguruiChan[3], CW, CH - 400, 400, 400);
+      textContent = "...Well, it's good you got lucky.";
+    } else if (chips > 10000) {
+      image(kakeguruiChan[3], CW, CH - 400, 400, 400);
+      textContent = "get out of my casino.";
+    }
+  }
+  if (state === "BET") {
+    image(kakeguruiChan[2], CW, CH - 400, 400, 400);
+    textContent = "Oh? lets see how much you bet!";
+  }
+  if (state === "FLASH") {
+    image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+    textContent = "Pay close attention!";
+  }
+  if (state === "ANSWER") {
+    image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+    textContent = "What was it? did you see?";
+  }
+  if (state === "RESULT") {
+    if (selectedAnswer === correctAnswer) {
+      image(kakeguruiChan[3], CW, CH - 400, 400, 400);
+      textContent = "Congratulations. I guess.";
+    } else {
+      image(kakeguruiChan[2], CW, CH - 400, 400, 400);
+      textContent = "aw, don't worry! You'll get it next time!";
+    }
+  }
+  if (state === "SHOP") {
+    image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+    textContent = "Welcome to the shop! Try out some upgrades!";
+  }
+  if (state === "ACT_TRANSITION") {
+    image(kakeguruiChan[1], CW, CH - 400, 400, 400);
+    textContent = "HAHAHA! Lets try something new!";
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  BET SECTION
 // ═════════════════════════════════════════════════════════════════════════════
 function drawBetSection() {
@@ -956,7 +1025,7 @@ function drawRevealBtn() {
 //  ACT TRANSITION
 // ═════════════════════════════════════════════════════════════════════════════
 function drawActTransition() {
-  background(col("bg"));
+  rect(0, 0, CW, CH);
 
   let fadeIn = constrain(map(transitionTimer, 3000, 2400, 0, 255), 0, 255);
   let elapsed = 1 - transitionTimer / 3000;
@@ -998,7 +1067,7 @@ function drawActTransition() {
 }
 
 function drawShop() {
-  background(col("bg"));
+  rect(0, 0, CW, CH);
   let cardX = PAD,
     cardY = PAD,
     cardW = CW - PAD * 2,
@@ -1085,31 +1154,6 @@ function drawShop() {
   textAlign(CENTER, CENTER);
   outlineText("CONTINUE", CW / 2, by + bh / 2 - 1);
   continueBtn = { x: bx, y: by, w: bw, h: bh };
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-//  TITLE SCREEN  — pg1 idle, pg2 on press, then → SPLASH
-// ═════════════════════════════════════════════════════════════════════════════
-function drawTitle() {
-  let img = titlePressed ? titleImg2 : titleImg1;
-  if (img) {
-    // Fill the full canvas, preserving aspect ratio (letter-box if needed)
-    let scale = min(CW / img.width, CH / img.height);
-    let dw = img.width * scale;
-    let dh = img.height * scale;
-    let dx = (CW - dw) / 2;
-    let dy = (CH - dh) / 2;
-    image(img, dx, dy, dw, dh);
-  } else {
-    // Fallback text if images not yet loaded
-    fill(col("white"));
-    setFont(32, "display");
-    textAlign(CENTER, CENTER);
-    text("CALCUSINO", CW / 2, CH / 2 - 20);
-    setFont(14, "ui");
-    fill(col("muted"));
-    text("PRESS TO START", CW / 2, CH / 2 + 24);
-  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1345,12 +1389,7 @@ function mouseDragged() {
 }
 
 function updateHover() {
-  if (
-    state === "TITLE" ||
-    state === "SPLASH" ||
-    state === "GAME_OVER" ||
-    state === "ACT_TRANSITION"
-  )
+  if (state === "SPLASH" || state === "GAME_OVER" || state === "ACT_TRANSITION")
     return;
   revealHover = revealBtn ? inBtn(mouseX, mouseY, revealBtn) : false;
   answerHover = -1;
@@ -1365,13 +1404,6 @@ function updateHover() {
 }
 
 function mousePressed() {
-  if (state === "TITLE") {
-    if (!titlePressed) {
-      titlePressed = true;
-      titlePressTimer = TITLE_PRESS_HOLD;
-    }
-    return;
-  }
   if (state === "SPLASH") {
     for (let b of diffBtns) {
       if (inBtn(mouseX, mouseY, b)) {
@@ -1401,8 +1433,7 @@ function mousePressed() {
     if (playAgainBtn && inBtn(mouseX, mouseY, playAgainBtn)) {
       stopAllGameSounds();
       playAgainBtn = null;
-      titlePressed = false;
-      state = "TITLE";
+      state = "SPLASH";
     }
     return;
   }
