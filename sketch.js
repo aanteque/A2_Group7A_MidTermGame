@@ -315,13 +315,21 @@ let actRound = 1;
 let finalChips = 0;
 
 let correctAnswer = 0;
+let targetValue = 0;
 let sumNumbers = [],
   numPositions = [],
   numFlips = [];
 let act1Pos = { x: 0, y: 0 };
-let state = "SPLASH";
+let state = "TITLE";
 let isMirrored = false;
 let flipType = 0;
+
+// ── Title screen state ────────────────────────────────────────────────────────
+let titleImg1 = null;
+let titleImg2 = null;
+let titlePressed = false;
+let titlePressTimer = 0;
+const TITLE_PRESS_HOLD = 800;
 
 let flashTimer = 0,
   flashDuration = 0;
@@ -438,8 +446,19 @@ function applyDifficulty(diff) {
   };
 }
 
+function getA3Diff() {
+  const t = [
+    { ms: 2400, label: "CALCULATED", mult: 1.8 },
+    { ms: 1900, label: "TACTICAL", mult: 2.2 },
+    { ms: 1400, label: "HYPER", mult: 2.6 },
+    { ms: 1100, label: "CHAOTIC", mult: 3.2 },
+    { ms: 1100, label: "INSANE", mult: 3.8 },
+  ];
+  return applyDifficulty(t[min(actRound - 1, t.length - 1)]);
+}
+
 function getDiff() {
-  return act === 1 ? getA1Diff() : getA2Diff();
+  return act === 1 ? getA1Diff() : act === 2 ? getA2Diff() : getA3Diff();
 }
 
 // ── p5 helpers ────────────────────────────────────────────────────────────────
@@ -495,6 +514,8 @@ let logoImg = null;
 
 function preload() {
   logoImg = loadImage("assets/Calcusino_p.png");
+  titleImg1 = loadImage("assets/clcutitle_pg1.png");
+  titleImg2 = loadImage("assets/clcutitle_pg2.png");
   chipsImg = loadImage("assets/images/Chips.png");
   levelImg = loadImage("assets/images/Level.png");
   streakImg = loadImage("assets/images/Streak.png");
@@ -548,6 +569,17 @@ function draw() {
   drawKakegurui();
   rect(0, 0, CW, CH);
 
+  if (state === "TITLE") {
+    drawTitle();
+    if (titlePressed) {
+      titlePressTimer -= deltaTime;
+      if (titlePressTimer <= 0) {
+        titlePressed = false;
+        state = "SPLASH";
+      }
+    }
+    return;
+  }
   if (state === "SPLASH") {
     drawSplash();
     return;
@@ -563,7 +595,10 @@ function draw() {
   if (state === "ACT_TRANSITION") {
     drawActTransition();
     transitionTimer -= deltaTime;
-    if (transitionTimer <= 0) beginAct2();
+    if (transitionTimer <= 0) {
+      if (act === 1) beginAct2();
+      else if (act === 2) beginAct3();
+    }
     return;
   }
 
@@ -602,6 +637,31 @@ function draw() {
 // ═════════════════════════════════════════════════════════════════════════════
 //  HEADER  — logo image
 // ═════════════════════════════════════════════════════════════════════════════
+function drawTitle() {
+  let img = titlePressed ? titleImg2 : titleImg1;
+  if (img) {
+    let scale = min(CW / img.width, CH / img.height);
+    let dw = img.width * scale;
+    let dh = img.height * scale;
+    let dx = (CW - dw) / 2;
+    let dy = (CH - dh) / 2;
+    image(img, dx, dy, dw, dh);
+    
+    // Overlay kakegurui chan on first page in her usual position
+    if (!titlePressed && kakeguruiChan[0]) {
+      image(kakeguruiChan[0], CW, CH - 400, 400, 400);
+    }
+  } else {
+    fill(col("white"));
+    setFont(32, "display");
+    textAlign(CENTER, CENTER);
+    text("CALCUSINO", CW / 2, CH / 2 - 20);
+    setFont(14, "ui");
+    fill(col("muted"));
+    text("PRESS TO START", CW / 2, CH / 2 + 24);
+  }
+}
+
 function drawHeader() {
   let ty = Y_HEADER;
   if (logoImg) {
@@ -618,7 +678,9 @@ function drawHeader() {
   text(
     act === 1
       ? "ACT I  —  TUTORIAL: Remember the number"
-      : "ACT II —  SUM BLITZ: Guess the total",
+      : act === 2
+      ? "ACT II —  SUM BLITZ: Guess the total"
+      : "ACT III —  Choose the correct mathematical expression",
     CW / 2,
     ty + 86,
   );
@@ -634,7 +696,7 @@ function drawHeader() {
 //  STATS — coloured filled boxes with gold borders
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStats() {
-  let totalRounds = act === 1 ? 4 : 6;
+  let totalRounds = act === 1 ? 4 : act === 2 ? 6 : 5;
   let labels = ["CHIPS", "LEVEL", "STREAK"];
   let values = [chips, actRound + "/" + totalRounds, streak];
   // Individual spacing controls for the stat icons.
@@ -703,7 +765,7 @@ function drawArena() {
   setFont(10, "ui");
   textAlign(LEFT, TOP);
   text(
-    (act === 1 ? "ACT I" : "ACT II") + "  RND " + actRound,
+    (act === 1 ? "ACT I" : act === 2 ? "ACT II" : "ACT III") + "  RND " + actRound,
     ax + 12,
     Y_ARENA + 10,
   );
@@ -725,7 +787,9 @@ function drawArena() {
     text(
       act === 1
         ? "Place your bet,\nthen reveal the number."
-        : "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM.",
+        : act === 2
+        ? "Place your bet,\nthen watch the numbers flash.\nSome may be mirrored or flipped.\nGuess their SUM."
+        : "Place your bet,\nthen reveal the target number.\nChoose the correct expression.",
       ax + aw / 2,
       Y_ARENA + H_ARENA / 2,
     );
@@ -775,7 +839,8 @@ function drawArena() {
     fadeA = constrain(fadeA, 0, 255);
 
     if (act === 1) drawAct1Flash(ax, aw, fadeA);
-    else drawAct2Flash(ax, aw, fadeA);
+    else if (act === 2) drawAct2Flash(ax, aw, fadeA);
+    else drawAct3Flash(ax, aw, fadeA);
 
     let bc = pct01 < 0.3 ? col("red") : col("amber");
     let barRgb = pct01 < 0.3 ? "210,35,45" : "220,155,10";
@@ -859,6 +924,23 @@ function drawAct2Flash(ax, aw, fadeA) {
     clearShadow();
     pop();
   }
+}
+
+function drawAct3Flash(ax, aw, fadeA) {
+  let a01 = fadeA / 255;
+  push();
+  translate(ax + aw / 2, Y_ARENA + H_ARENA / 2);
+  setShadow(`rgba(220,155,10,${(a01 * 0.6).toFixed(2)})`, 30);
+  fill(col("cyan", fadeA));
+  setFont(110, "display");
+  textAlign(CENTER, CENTER);
+  text(targetValue, 0, -18);
+  clearShadow();
+
+  fill(col("muted", fadeA));
+  setFont(14, "ui");
+  text("Match the correct expression", 0, 54);
+  pop();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1298,13 +1380,18 @@ function drawSplash() {
       text: "Multiple numbers appear scattered across the screen. Add them up in your head, then pick the correct sum. Some numbers may be flipped.",
     },
     { spacer: true },
+    { label: "ACT III —  EXPRESSION MATCH  (5 rounds)", color: "actIII" },
+    {
+      text: "A target number is shown. Choose the correct mathematical expression (+, -, ×, ÷) from four options that equals the target.",
+    },
+    { spacer: true },
     { label: "SCORING", color: "amber" },
     { text: "Correct: win your bet × the round multiplier." },
     { text: "Wrong or timeout: lose your bet. Chips CAN go negative." },
     { spacer: true },
     { label: "GOAL", color: "green" },
     {
-      text: "Survive all 10 rounds and finish with as many chips as possible. You start with 50.",
+      text: "Survive all 15 rounds and finish with as many chips as possible. You start with 50.",
     },
   ];
 
@@ -1320,6 +1407,8 @@ function drawSplash() {
         fill(color(31, 191, 255));
       } else if (l.color === "actII") {
         fill(color(248, 31, 255));
+      } else if (l.color === "actIII") {
+        fill(color(255, 165, 0)); // orange for act III
       } else {
         fill(col(l.color));
       }
@@ -1500,6 +1589,13 @@ function updateHover() {
 }
 
 function mousePressed() {
+  if (state === "TITLE") {
+    if (!titlePressed) {
+      titlePressed = true;
+      titlePressTimer = TITLE_PRESS_HOLD;
+    }
+    return;
+  }
   if (state === "SPLASH") {
     for (let b of diffBtns) {
       if (inBtn(mouseX, mouseY, b)) {
@@ -1616,7 +1712,7 @@ function startFlash() {
     let minN = actRound <= 2 ? 1 : 10;
     correctAnswer = floor(random(minN, maxN + 1));
     choices = generateChoicesAct1(correctAnswer, isMirrored);
-  } else {
+  } else if (act === 2) {
     isMirrored = false;
     sumNumbers = [];
     numFlips = [];
@@ -1629,6 +1725,13 @@ function startFlash() {
     correctAnswer = sumNumbers.reduce((a, b) => a + b, 0);
     choices = generateChoicesAct2(correctAnswer);
     numPositions = generatePositions(diff2.count, diff2.scatter);
+  } else {
+    sumNumbers = [];
+    numFlips = [];
+    let question = generateChoicesAct3();
+    targetValue = question.target;
+    correctAnswer = question.correct;
+    choices = question.choices;
   }
 
   flashDuration = diff.ms;
@@ -1764,9 +1867,7 @@ function playCountdownSound() {
 
 function playWinSound() {
   if (winSound && winSound.isLoaded && winSound.isLoaded()) {
-    if (!bgMusicPaused) {
-      muteBgMusic();
-    }
+    muteBgMusic();
     winSound.playMode("restart");
     winSound.play();
     let dur = winSound.duration ? winSound.duration() * 1000 + 150 : 3000;
@@ -1776,9 +1877,7 @@ function playWinSound() {
 
 function playLoseSound() {
   if (loseSound && loseSound.isLoaded && loseSound.isLoaded()) {
-    if (!bgMusicPaused) {
-      muteBgMusic();
-    }
+    muteBgMusic();
     loseSound.playMode("restart");
     loseSound.play();
     let dur = loseSound.duration ? loseSound.duration() * 1000 + 150 : 3000;
@@ -1788,9 +1887,7 @@ function playLoseSound() {
 
 function playJackpotSound() {
   if (jackpotSound && jackpotSound.isLoaded && jackpotSound.isLoaded()) {
-    if (!bgMusicPaused) {
-      muteBgMusic();
-    }
+    muteBgMusic();
     jackpotSound.playMode("restart");
     jackpotSound.play();
     let dur = jackpotSound.duration ? jackpotSound.duration() * 1000 + 150 : 3000;
@@ -1910,7 +2007,7 @@ function handleAnswer(val) {
       }
       if (chips > 0) playLoseSound();
     }
-  } else {
+  } else if (act === 2) {
     if (Math.abs(val - correctAnswer) === 0) {
       let profit = floor(bet * diff.mult);
       chips += profit;
@@ -1932,6 +2029,31 @@ function handleAnswer(val) {
       } else {
         streak = 0;
         setLog("-" + bet + " chips.  Sum was " + correctAnswer + ".", "bad");
+      }
+      if (chips > 0) playLoseSound();
+    }
+  } else if (act === 3) {
+    if (choices[val] === correctAnswer) {
+      let profit = floor(bet * diff.mult);
+      chips += profit;
+      streak++;
+      setLog("+" + profit + " chips! Correct expression!  (×" + diff.mult + ")", "good");
+      playJackpotSound();
+    } else {
+      chips -= bet;
+      if (hasStreakShield) {
+        hasStreakShield = false;
+        setLog(
+          "-" +
+            bet +
+            " chips. Streak preserved by shield! It was " +
+            correctAnswer +
+            ".",
+          "good",
+        );
+      } else {
+        streak = 0;
+        setLog("-" + bet + " chips.  It was " + correctAnswer + ".", "bad");
       }
       if (chips > 0) playLoseSound();
     }
@@ -1991,13 +2113,13 @@ function gameOverNow() {
 }
 
 function nextRound() {
-  let maxRounds = act === 1 ? 4 : 6;
+  let maxRounds = act === 1 ? 4 : act === 2 ? 6 : 5;
   if (actRound >= maxRounds) {
-    if (act === 1) {
+    if (act === 1 || act === 2) {
       stopAllGameSounds();
       playLevelUpSound();
       state = "SHOP";
-      setLog("Shop before Act II — buy a boost or continue.", "special");
+      setLog("Shop before Act " + (act === 1 ? "II" : "III") + " — buy a boost or continue.", "special");
       return;
     } else {
       stopAllGameSounds();
@@ -2019,6 +2141,15 @@ function beginAct2() {
   setLog("ACT II — Guess the sum of the numbers!", "special");
   resetRound();
   // Resume BGM after the Act II transition (transition called stopAllGameSounds)
+  startBgMusic();
+}
+
+function beginAct3() {
+  act = 3;
+  actRound = 1;
+  setLog("ACT III — Choose the correct mathematical expression!", "special");
+  resetRound();
+  // Resume BGM after the Act III transition (transition called stopAllGameSounds)
   startBgMusic();
 }
 
@@ -2065,6 +2196,93 @@ function generateChoicesAct2(correct) {
     if (d > 0 && d <= 200) set.add(d);
   }
   return shuffle([...set].slice(0, 4));
+}
+
+function generateChoicesAct3() {
+  let target = floor(random(1, 13));
+  let ops = ["+", "-", "*", "/"];
+  let correctOp = ops[floor(random(ops.length))];
+  let correct = makeAct3Expression(target, correctOp);
+  let choices = [correct];
+
+  for (let op of ops) {
+    if (op === correctOp) continue;
+    let wrong = makeAct3Expression(target, op, true);
+    let tries = 0;
+    while (wrong === correct && tries++ < 100) {
+      wrong = makeAct3Expression(target, op, true);
+    }
+    choices.push(wrong);
+  }
+
+  return {
+    target,
+    correct,
+    choices: shuffle(choices),
+  };
+}
+
+function makeAct3Expression(target, op, forceWrong = false) {
+  const randBetween = (min, max) => floor(random(min, max + 1));
+  let expr;
+  if (op === "+") {
+    let a = randBetween(0, target + 4);
+    let b = target - a;
+    if (forceWrong) {
+      do {
+        a = randBetween(0, target + 8);
+        b = randBetween(0, target + 8);
+      } while (a + b === target);
+    } else {
+      b = target - a;
+    }
+    expr = `${a}+${b}`;
+  } else if (op === "-") {
+    let a = randBetween(target + 1, target + 10);
+    let b = a - target;
+    if (forceWrong) {
+      do {
+        a = randBetween(0, target + 12);
+        b = randBetween(0, target + 12);
+      } while (a - b === target);
+    }
+    expr = `${a}-${b}`;
+  } else if (op === "*") {
+    let a, b;
+    if (!forceWrong) {
+      if (target === 1) {
+        a = 1;
+        b = 1;
+      } else {
+        let factor = floor(random(1, target + 1));
+        a = factor;
+        b = target / factor;
+        if (!Number.isInteger(b) || b < 0) {
+          b = 1;
+          a = target;
+        }
+      }
+    } else {
+      do {
+        a = randBetween(0, 12);
+        b = randBetween(0, 12);
+      } while (a * b === target);
+    }
+    expr = `${a}*${b}`;
+  } else if (op === "/") {
+    let a, b;
+    if (!forceWrong) {
+      b = randBetween(2, 6);
+      a = target * b;
+    } else {
+      do {
+        b = randBetween(2, 6);
+        a = randBetween(0, 30);
+      } while (b === 0 || a / b === target);
+    }
+    expr = `${a}/${b}`;
+  }
+  return expr;
 }
 
 function mirrorDigit(n) {
