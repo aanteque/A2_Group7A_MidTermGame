@@ -1203,28 +1203,36 @@ function drawActTransition() {
 
   textAlign(CENTER, CENTER);
 
+  let nextAct = act + 1;
+  let actTitle, actSubtitle, actDesc;
+  if (nextAct === 2) {
+    actTitle = "ACT  II";
+    actSubtitle = "S U M   B L I T Z";
+    actDesc = "Numbers scatter across the screen.\nYour job: guess their sum.\nOnly the exact answer wins.";
+  } else if (nextAct === 3) {
+    actTitle = "ACT  III";
+    actSubtitle = "E X P R E S S I O N   M A T C H";
+    actDesc = "A target number is shown.\nChoose the correct mathematical expression.\nFrom four options that equal the target.";
+  }
+
   // purple shadow offset
   fill(col("shadow", fadeIn));
   setFont(90, "display");
-  text("ACT  II", CW / 2 + 5, CH / 2 - 55);
+  text(actTitle, CW / 2 + 5, CH / 2 - 55);
 
   setShadow("rgba(210,35,45,0.5)", 30);
   fill(col("red", fadeIn));
   setFont(90, "display");
-  text("ACT  II", CW / 2, CH / 2 - 60);
+  text(actTitle, CW / 2, CH / 2 - 60);
   clearShadow();
 
   fill(col("amber", fadeIn));
   setFont(28, "display");
-  text("S U M   B L I T Z", CW / 2, CH / 2 + 14);
+  text(actSubtitle, CW / 2, CH / 2 + 14);
 
   fill(col("muted", fadeIn));
   setFont(12, "ui");
-  text(
-    "Numbers scatter across the screen.\nYour job: guess their sum.\nOnly the exact answer wins.",
-    CW / 2,
-    CH / 2 + 72,
-  );
+  text(actDesc, CW / 2, CH / 2 + 72);
 
   let bw = 300;
   fill(color(40, 30, 10));
@@ -2033,7 +2041,7 @@ function handleAnswer(val) {
       if (chips > 0) playLoseSound();
     }
   } else if (act === 3) {
-    if (choices[val] === correctAnswer) {
+    if (val === correctAnswer) {
       let profit = floor(bet * diff.mult);
       chips += profit;
       streak++;
