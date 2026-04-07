@@ -19,6 +19,10 @@ const C = {
   shadow: [90, 30, 120],
 };
 
+// ── Background Music Volume ────────────────────────────────────────────────────
+const BGM_VOLUME_NORMAL = 0.7;
+const BGM_VOLUME_LOW = 0.3; // volume when SFX are playing (slightly higher so music is still noticeable)
+
 // ── Difficulty ────────────────────────────────────────────────────────────────
 let difficulty = 1;
 const DIFF_SETTINGS = [
@@ -70,6 +74,68 @@ let dropCoinSound = null;
 let revealSound = null;
 let failTrumpetSound = null;
 let countdownSoundTimeout = null;
+
+// ── Background Music ──────────────────────────────────────────────────────────
+let bgMusic = null;
+let bgMusicPaused = false; // true when we've deliberately paused it for an SFX
+let bgResumeTimeout = null; // setTimeout handle for resuming after an SFX
+let bgResumeTargetTime = 0; // Track when music should resume to handle overlapping sounds
+
+function startBgMusic() {
+  if (!bgMusic || !bgMusic.isLoaded || !bgMusic.isLoaded()) return;
+  bgMusicPaused = false;
+  clearBgResumeTimeout();
+  if (!bgMusic.isPlaying()) {
+    bgMusic.loop();
+  }
+  bgMusic.setVolume(BGM_VOLUME_NORMAL);
+}
+
+function pauseBgMusic() {
+  clearBgResumeTimeout();
+  if (bgMusic && bgMusic.isLoaded && bgMusic.isLoaded()) {
+    bgMusic.setVolume(BGM_VOLUME_LOW);
+    bgMusicPaused = true;
+  }
+}
+
+function muteBgMusic() {
+  clearBgResumeTimeout();
+  if (bgMusic && bgMusic.isLoaded && bgMusic.isLoaded()) {
+    bgMusic.setVolume(0);
+    bgMusicPaused = true;
+  }
+}
+
+function resumeBgMusic() {
+  bgResumeTimeout = null;
+  if (!bgMusic || !bgMusic.isLoaded || !bgMusic.isLoaded()) return;
+  if (bgMusicPaused) {
+    bgMusic.setVolume(BGM_VOLUME_NORMAL);
+    bgMusicPaused = false;
+  }
+}
+
+function clearBgResumeTimeout() {
+  if (bgResumeTimeout !== null) {
+    clearTimeout(bgResumeTimeout);
+    bgResumeTimeout = null;
+    bgResumeTargetTime = 0;
+  }
+}
+
+// Schedule a BGM resume after `durationMs` milliseconds
+// If a resume is already scheduled, only reschedule if the new duration is longer
+function scheduleBgResume(durationMs) {
+  let targetTime = Date.now() + durationMs;
+  
+  // Only reschedule if this sound extends the duration
+  if (targetTime > bgResumeTargetTime) {
+    clearBgResumeTimeout();
+    bgResumeTargetTime = targetTime;
+    bgResumeTimeout = setTimeout(resumeBgMusic, durationMs + 200); // small buffer
+  }
+}
 
 // ── Win Confetti ──────────────────────────────────────────────────────────────
 let confettiParticles = [];
@@ -198,35 +264,47 @@ const STAT_GAP_LEVEL_STREAK = 40; // horizontal gap between level and streak
 
 const H_HEADER = 110;
 const H_STATS = 70;
-const H_ARENA = 210;
+let H_ARENA = 210;
 const H_BET = 70;
 const H_ANSWER_COLLAPSED = 36;
 const H_ANSWER_EXPANDED = 92;
 const H_LOG = 24;
 const H_REVEAL = 52;
 
-const CH =
-  PAD +
-  H_HEADER +
-  GAP +
-  H_STATS +
-  GAP +
-  H_ARENA +
-  GAP +
-  H_BET +
-  GAP +
-  H_LOG +
-  GAP +
-  H_REVEAL +
-  PAD;
+let CH = 0;
+let Y_HEADER = PAD;
+let Y_STATS = 0;
+let Y_ARENA = 0;
+let Y_BET = 0;
+let Y_ANSWER = 0;
+let Y_LOG = 0;
+let Y_REVEAL = 0;
 
-const Y_HEADER = PAD;
-const Y_STATS = Y_HEADER + H_HEADER + GAP;
-const Y_ARENA = Y_STATS + H_STATS + GAP;
-const Y_BET = Y_ARENA + H_ARENA + GAP;
-const Y_ANSWER = Y_BET + H_BET + GAP;
-const Y_LOG = Y_BET + H_BET + GAP;
-const Y_REVEAL = Y_LOG + H_LOG + GAP;
+function recalcLayout() {
+  const overhead =
+    PAD +
+    H_HEADER +
+    GAP +
+    H_STATS +
+    GAP +
+    H_BET +
+    GAP +
+    H_LOG +
+    GAP +
+    H_REVEAL +
+    PAD;
+  const targetHeight = max(windowHeight - 20, 700);
+  H_ARENA = max(210, targetHeight - overhead);
+  CH = overhead + H_ARENA;
+
+  Y_HEADER = PAD;
+  Y_STATS = Y_HEADER + H_HEADER + GAP;
+  Y_ARENA = Y_STATS + H_STATS + GAP;
+  Y_BET = Y_ARENA + H_ARENA + GAP;
+  Y_ANSWER = Y_BET + H_BET + GAP;
+  Y_LOG = Y_BET + H_BET + GAP;
+  Y_REVEAL = Y_LOG + H_LOG + GAP;
+}
 
 // ── Game state ────────────────────────────────────────────────────────────────
 let chips = 50,
@@ -447,11 +525,22 @@ function preload() {
   failTrumpetSound = loadSound(
     "assets/sounds/universfield-cartoon-fail-trumpet-278822.mp3",
   );
+
+  // ── Background music ────────────────────────────────────────────────────────
+  bgMusic = loadSound(
+    "assets/sounds/freesound_community-027682_boss39s-music-for-gamemp3-68640.mp3",
+  );
 }
 
 function setup() {
+  recalcLayout();
   createCanvas(CW + 400, CH);
   textFont("Impact");
+}
+
+function windowResized() {
+  recalcLayout();
+  resizeCanvas(CW + 400, CH);
 }
 
 function draw() {
@@ -1079,6 +1168,12 @@ function drawShop() {
   textAlign(CENTER, TOP);
   text("POWER-UP SHOP", CW / 2, cardY + 32);
 
+  // Display current chips
+  setFont(14, "ui");
+  fill(col("amber"));
+  textAlign(CENTER, TOP);
+  text(`You have: ${chips} chips`, CW / 2, cardY + 62);
+
   shopBtns = [];
   let itemY = cardY + 90;
   let itemH = 92;
@@ -1125,12 +1220,13 @@ function drawShop() {
         btnH = 28;
       let btnX = itemX + itemW - btnW - 16,
         btnY = itemY + itemH - btnH - 16;
-      drawCard(btnX, btnY, btnW, btnH, col("red"));
-      fill(col("white"));
+      let canAfford = chips >= item.cost;
+      drawCard(btnX, btnY, btnW, btnH, canAfford ? col("red") : color(80, 40, 40));
+      fill(canAfford ? col("white") : col("muted"));
       setFont(12, "ui");
       textAlign(CENTER, CENTER);
       text("BUY", btnX + btnW / 2, btnY + btnH / 2);
-      shopBtns.push({ x: btnX, y: btnY, w: btnW, h: btnH, key: item.key });
+      shopBtns.push({ x: btnX, y: btnY, w: btnW, h: btnH, key: item.key, disabled: !canAfford });
     }
 
     itemY += itemH + itemGap;
@@ -1408,15 +1504,19 @@ function mousePressed() {
     for (let b of diffBtns) {
       if (inBtn(mouseX, mouseY, b)) {
         difficulty = b.index;
+        playRevealSound();
         return;
       }
     }
-    if (startBtn && inBtn(mouseX, mouseY, startBtn)) fullReset();
+    if (startBtn && inBtn(mouseX, mouseY, startBtn)) {
+      fullReset();
+      playLevelUpSound();
+    }
     return;
   }
   if (state === "SHOP") {
     for (let b of shopBtns) {
-      if (inBtn(mouseX, mouseY, b)) {
+      if (!b.disabled && inBtn(mouseX, mouseY, b)) {
         handleShopPurchase(b.key);
         return;
       }
@@ -1434,6 +1534,7 @@ function mousePressed() {
       stopAllGameSounds();
       playAgainBtn = null;
       state = "SPLASH";
+      startBgMusic(); // restart BGM on return to splash
     }
     return;
   }
@@ -1477,7 +1578,7 @@ function inBtn(mx, my, b) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GAME LOGIC  (unchanged from original)
+//  GAME LOGIC
 // ═════════════════════════════════════════════════════════════════════════════
 function fullReset() {
   chips = 50;
@@ -1494,6 +1595,7 @@ function fullReset() {
   CHIP_VALUES = [5, 10, 25, 50, "ALL"];
   resetRound();
   state = "BET";
+  startBgMusic(); // begin BGM when the game starts
 }
 
 function startFlash() {
@@ -1578,6 +1680,12 @@ function clearCountdownSoundSchedule() {
 
 function stopAllGameSounds() {
   clearCountdownSoundSchedule();
+  clearBgResumeTimeout();
+  if (bgMusic && bgMusic.isLoaded && bgMusic.isLoaded()) {
+    bgMusic.setVolume(BGM_VOLUME_NORMAL);
+  }
+  bgMusicPaused = false;
+
   [
     countdownSound,
     winSound,
@@ -1606,11 +1714,19 @@ function stopCountdownSound() {
   }
 }
 
+// Plays a one-shot SFX, lowering BGM volume while it plays and restoring after
 function playSound(sound) {
   if (sound && sound.isLoaded && sound.isLoaded()) {
-    stopAllGameSounds();
+    // Only lower volume if not already lowered
+    if (!bgMusicPaused) {
+      pauseBgMusic();
+    }
     sound.playMode("restart");
     sound.play();
+    // Schedule BGM resume after the SFX finishes
+    // Get actual sound duration with a buffer, use safe default if unavailable
+    let dur = sound.duration ? sound.duration() * 1000 + 150 : 3000;
+    scheduleBgResume(dur);
   }
 }
 
@@ -1618,6 +1734,7 @@ function playCountdownSound() {
   if (!countdownSound || !countdownSound.isLoaded || !countdownSound.isLoaded())
     return;
   clearCountdownSoundSchedule();
+  pauseBgMusic(); // hush BGM for the countdown
 
   let soundMs = countdownSound.duration() * 1000;
   let timeMs = answerTimer > 0 ? answerTimer : ANSWER_TIME;
@@ -1635,23 +1752,50 @@ function playCountdownSound() {
         countdownSound.play();
       }
     }, delay);
+    // BGM resume scheduled for after the countdown sound finishes
+    scheduleBgResume(timeMs + 200);
   } else {
     let cueStart = max(0, soundMs - timeMs) / 1000;
     countdownSound.playMode("restart");
     countdownSound.play(0, 1, 1, cueStart, timeMs / 1000);
+    scheduleBgResume(timeMs + 200);
   }
 }
 
 function playWinSound() {
-  playSound(winSound);
+  if (winSound && winSound.isLoaded && winSound.isLoaded()) {
+    if (!bgMusicPaused) {
+      muteBgMusic();
+    }
+    winSound.playMode("restart");
+    winSound.play();
+    let dur = winSound.duration ? winSound.duration() * 1000 + 150 : 3000;
+    scheduleBgResume(dur);
+  }
 }
 
 function playLoseSound() {
-  playSound(loseSound);
+  if (loseSound && loseSound.isLoaded && loseSound.isLoaded()) {
+    if (!bgMusicPaused) {
+      muteBgMusic();
+    }
+    loseSound.playMode("restart");
+    loseSound.play();
+    let dur = loseSound.duration ? loseSound.duration() * 1000 + 150 : 3000;
+    scheduleBgResume(dur);
+  }
 }
 
 function playJackpotSound() {
-  playSound(jackpotSound);
+  if (jackpotSound && jackpotSound.isLoaded && jackpotSound.isLoaded()) {
+    if (!bgMusicPaused) {
+      muteBgMusic();
+    }
+    jackpotSound.playMode("restart");
+    jackpotSound.play();
+    let dur = jackpotSound.duration ? jackpotSound.duration() * 1000 + 150 : 3000;
+    scheduleBgResume(dur);
+  }
 }
 
 function playLevelUpSound() {
@@ -1660,8 +1804,13 @@ function playLevelUpSound() {
 
 function playRevealSound() {
   if (revealSound && revealSound.isLoaded && revealSound.isLoaded()) {
+    if (!bgMusicPaused) {
+      pauseBgMusic();
+    }
     revealSound.playMode("restart");
     revealSound.play();
+    let dur = revealSound.duration ? revealSound.duration() * 1000 + 150 : 1500;
+    scheduleBgResume(dur);
   }
 }
 
@@ -1675,9 +1824,13 @@ function playFailTrumpetSound() {
     failTrumpetSound.isLoaded &&
     failTrumpetSound.isLoaded()
   ) {
-    stopAllGameSounds();
+    pauseBgMusic();
     failTrumpetSound.playMode("restart");
     failTrumpetSound.play();
+    let dur = failTrumpetSound.duration
+      ? failTrumpetSound.duration() * 1000
+      : 3000;
+    scheduleBgResume(dur);
   }
 }
 
@@ -1694,7 +1847,7 @@ function handleShopPurchase(key) {
     }
     chips -= 40;
     hasStreakShield = true;
-    playDropCoinSound();
+    playRevealSound();
     setLog("Streak Shield purchased!", "good");
     return;
   }
@@ -1709,7 +1862,7 @@ function handleShopPurchase(key) {
     }
     chips -= 30;
     hasTimeSurge = true;
-    playDropCoinSound();
+    playRevealSound();
     setLog("Time Surge purchased!", "good");
     return;
   }
@@ -1834,6 +1987,7 @@ function gameOverNow() {
     playLoseSound();
   }
   state = "GAME_OVER";
+  // BGM stays paused on game over screen; it resumes when player goes back to splash
 }
 
 function nextRound() {
@@ -1864,6 +2018,8 @@ function beginAct2() {
   actRound = 1;
   setLog("ACT II — Guess the sum of the numbers!", "special");
   resetRound();
+  // Resume BGM after the Act II transition (transition called stopAllGameSounds)
+  startBgMusic();
 }
 
 function resetRound() {
@@ -1878,6 +2034,8 @@ function resetRound() {
   flipType = 0;
   allSelected = false;
   state = "BET";
+  // Ensure BGM is running whenever we return to the BET state mid-game
+  if (bgMusicPaused) resumeBgMusic();
 }
 
 function generateChoicesAct1(correct, mirrored) {

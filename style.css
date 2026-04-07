@@ -2,7 +2,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #080a0f url("assets/images/Background.png") no-repeat center center fixed;
+  background: #080a0f url("assets/images/Background.png") no-repeat center
+    center fixed;
   background-size: cover;
   min-height: 100vh;
   display: flex;
